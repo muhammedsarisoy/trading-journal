@@ -11,7 +11,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
 
 # ---------- çalıştırma ----------
-FROM alpine:3.21
+FROM alpine:3.24
 
 # ca-certificates: Supabase'e TLS ve JWKS indirmesi için
 # tzdata: APP_TIMEZONE değeri için
