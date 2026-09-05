@@ -1,0 +1,8 @@
+# Secret imaja girmez — çalışma zamanında env_file ile verilir.
+.env
+.env.*
+
+bin/
+server
+server.exe
+*.log

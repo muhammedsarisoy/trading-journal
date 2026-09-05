@@ -1,0 +1,33 @@
+services:
+  api:
+    build:
+      context: ./api
+    # DATABASE_URL ve JWKS adresi çalışma zamanında okunur, imaja gömülmez.
+    env_file:
+      - ./api/.env
+    environment:
+      PORT: "8080"
+      ALLOWED_ORIGINS: "http://localhost:3000"
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      # NEXT_PUBLIC_* değerleri derleme anında pakete gömülür, bu yüzden
+      # build arg olarak geçilir. Değerler web/.env.local'dan gelir:
+      #   docker compose --env-file web/.env.local up -d --build
+      # Boş bırakılırsa Dockerfile derlemeyi açıklayıcı mesajla durdurur.
+      # ":?" kullanılmıyor — o sözdizimi ps/logs/exec gibi derleme dışı
+      # komutları da kırıyor.
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    restart: unless-stopped

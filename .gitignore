@@ -1,0 +1,26 @@
+# Bağımlılıklar
+node_modules/
+
+# Next.js
+web/.next/
+web/out/
+web/next-env.d.ts
+
+# Ortam dosyaları — secret repoya girmez
+.env
+.env.local
+.env.*.local
+
+# Go
+api/bin/
+api/server
+api/server.exe
+
+# Editör / işletim sistemi
+.DS_Store
+Thumbs.db
+*.log
+
+# Üçüncü parti agent skill'leri: skills-lock.json'dan yeniden kurulur.
+.agents/skills/
+.claude/skills/

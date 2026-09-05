@@ -1,0 +1,11 @@
+node_modules
+.next
+out
+npm-debug.log*
+.git
+
+# .env dosyaları imaja GİRMEZ. NEXT_PUBLIC_* değerleri build arg olarak
+# açıkça geçilir (bkz. Dockerfile + docker-compose.yml). Böylece bu
+# dosyalara yanlışlıkla yazılmış bir gizli anahtar pakete gömülemez.
+.env
+.env.*

@@ -1,0 +1,288 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* =====================================================================
+   Trading Journal — defter teması
+   Renk dekoratif değil: yalnız kâr/zarar ve hiyerarşi kodlar.
+   Bu blok shadcn varsayılanlarından SONRA gelir, o yüzden onları ezer.
+   ===================================================================== */
+
+@theme inline {
+  --color-long: var(--long);
+  --color-short: var(--short);
+  --color-long-soft: var(--long-soft);
+  --color-short-soft: var(--short-soft);
+  --color-rule-strong: var(--rule-strong);
+}
+
+:root {
+  /* Tipografi — layout.tsx bu değişkenleri tanımlar */
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-geist-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  /* Radius hiyerarşi taşır: yüzeyler keskin, kontroller yumuşak */
+  --radius: 0.25rem;
+}
+
+/* Uygulama koyu temada çalışır; açık tema tanımlı ama ikincil. */
+:root {
+  --background: #f7f8fa;
+  --foreground: #12161c;
+  --card: #ffffff;
+  --card-foreground: #12161c;
+  --popover: #ffffff;
+  --popover-foreground: #12161c;
+  --primary: #12161c;
+  --primary-foreground: #ffffff;
+  --secondary: #eceff3;
+  --secondary-foreground: #12161c;
+  --muted: #eceff3;
+  --muted-foreground: #5d6875;
+  --accent: #e6eaf0;
+  --accent-foreground: #12161c;
+  --destructive: #c2413a;
+  --border: #dfe4ea;
+  --rule-strong: #c9d1da;
+  --input: #dfe4ea;
+  --ring: #8792a3;
+
+  --long: #2f8f66;
+  --short: #c2413a;
+  --long-soft: #2f8f6618;
+  --short-soft: #c2413a18;
+
+  --profit: var(--long);
+  --loss: var(--short);
+  --profit-muted: var(--long-soft);
+  --loss-muted: var(--short-soft);
+  --neutral-pnl: #5d6875;
+
+  --chart-1: #2f8f66;
+  --chart-2: #c2413a;
+  --chart-3: #46688f;
+  --chart-4: #8a6d3b;
+  --chart-5: #6b5b8f;
+
+  --sidebar: #f7f8fa;
+  --sidebar-foreground: #12161c;
+  --sidebar-primary: #12161c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6eaf0;
+  --sidebar-accent-foreground: #12161c;
+  --sidebar-border: #dfe4ea;
+  --sidebar-ring: #8792a3;
+}
+
+.dark {
+  /* Şase → panel → girinti: derinlik gölgeyle değil tonla kurulur */
+  --background: #0c0f13;
+  --foreground: #d6dce5;
+  --card: #12161c;
+  --card-foreground: #d6dce5;
+  --popover: #12161c;
+  --popover-foreground: #d6dce5;
+  --primary: #d6dce5;
+  --primary-foreground: #0c0f13;
+  --secondary: #191f27;
+  --secondary-foreground: #d6dce5;
+  --muted: #191f27;
+  --muted-foreground: #8792a3;
+  --accent: #1d242e;
+  --accent-foreground: #eef2f7;
+  --destructive: #e0574f;
+  --border: #232b36;
+  --rule-strong: #2e3846;
+  --input: #1d242e;
+  --ring: #46536610;
+
+  --long: #3fb27f;
+  --short: #e0574f;
+  --long-soft: #3fb27f1f;
+  --short-soft: #e0574f1f;
+
+  --profit: var(--long);
+  --loss: var(--short);
+  --profit-muted: var(--long-soft);
+  --loss-muted: var(--short-soft);
+  --neutral-pnl: #8792a3;
+
+  --chart-1: #3fb27f;
+  --chart-2: #e0574f;
+  --chart-3: #6f9ad1;
+  --chart-4: #c9a35e;
+  --chart-5: #9b8ac4;
+
+  --sidebar: #0c0f13;
+  --sidebar-foreground: #d6dce5;
+  --sidebar-primary: #d6dce5;
+  --sidebar-primary-foreground: #0c0f13;
+  --sidebar-accent: #1d242e;
+  --sidebar-accent-foreground: #eef2f7;
+  --sidebar-border: #232b36;
+  --sidebar-ring: #465366;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  /* Sayılar her yerde aynı genişlikte: sütunlar kaymaz. */
+  .num,
+  table td,
+  table th {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .num {
+    font-family: var(--font-geist-mono);
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer components {
+  /* Defter satırı: kutu değil, çizgi. */
+  .rule-y > * + * {
+    border-top: 1px solid var(--border);
+  }
+
+  /* Değer üstte, etiket altında — ekstre okuması. */
+  .metric-value {
+    @apply text-foreground leading-none;
+    font-family: var(--font-geist-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  .metric-label {
+    @apply mt-1.5 block text-xs text-muted-foreground;
+  }
+}
