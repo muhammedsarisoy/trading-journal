@@ -63,9 +63,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # go.mod'daki sürüme sabitlenmez: o yalnız alt sınırdır ve standart
+      # kütüphane açıkları yama sürümlerinde kapatılır. Tarama her zaman en
+      # güncel kararlı derleyiciyle yapılmalı.
       - uses: actions/setup-go@v7
         with:
-          go-version-file: api/go.mod
+          go-version: stable
           cache-dependency-path: api/go.sum
 
       - name: Derle
