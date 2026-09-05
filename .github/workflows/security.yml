@@ -1,0 +1,117 @@
+name: Güvenlik
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Her pazartesi 06:00 UTC — yeni açıklanan CVE'ler kod değişmese de yakalanır.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Sızmış anahtar taraması
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # gitleaks tüm geçmişi tarar
+
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source /repo --redact --no-banner --verbose
+
+      # Bu projede iki kez hataya düşülen noktalar; gitleaks'in genel
+      # desenlerine güvenmek yerine açıkça denetleniyor.
+      - name: Projeye özel kontroller
+        run: |
+          fail=0
+
+          echo "→ .env dosyası takip ediliyor mu"
+          if git ls-files | grep -E '(^|/)\.env(\.|$)' | grep -v '\.env\.example'; then
+            echo "HATA: .env dosyası depoya girmiş."
+            fail=1
+          fi
+
+          echo "→ NEXT_PUBLIC_ değişkenine gizli anahtar konmuş mu"
+          if git grep -nI -E 'NEXT_PUBLIC_[A-Z_]*=(sb_secret_|eyJ[A-Za-z0-9_-]{20,})' -- ':!*.md'; then
+            echo "HATA: gizli görünen bir değer NEXT_PUBLIC_ değişkeninde."
+            echo "      Bu değerler tarayıcı paketine gömülür."
+            fail=1
+          fi
+
+          echo "→ service_role anahtarı kodda geçiyor mu"
+          if git grep -nI -E 'sb_secret_[A-Za-z0-9_-]{16,}' -- ':!*.md' ':!*Dockerfile' ':!.github/*'; then
+            echo "HATA: gizli anahtar deposunda."
+            fail=1
+          fi
+
+          [ "$fail" = 0 ] && echo "Temiz." || exit 1
+
+  go:
+    name: Go — açık taraması ve derleme
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+
+      - name: Derle
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Biçim denetimi
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "gofmt gerekiyor:"; echo "$out"; exit 1; fi
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  web:
+    name: Web — bağımlılık denetimi ve derleme
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: npm audit
+        run: npm audit --audit-level=moderate --omit=dev
+
+      - name: Tip denetimi
+        run: npx tsc --noEmit
+
+      - name: Derle
+        # Gerçek anahtar gerekmiyor; derlemenin geçtiğini görmek yeterli.
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_ci_placeholder
+          NEXT_PUBLIC_API_URL: http://localhost:8080
+        run: npm run build

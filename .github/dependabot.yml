@@ -1,0 +1,43 @@
+# Bağımlılıkları haftalık tarar, açık kapatan sürüm çıkınca PR açar.
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /api
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(api)"
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(web)"
+    groups:
+      # Tek tek PR yerine toplu: shadcn bileşenleri aynı anda hareket ediyor.
+      radix:
+        patterns: ["radix-ui", "@radix-ui/*"]
+      types:
+        patterns: ["@types/*"]
+
+  - package-ecosystem: docker
+    directories: ["/api", "/web"]
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(docker)"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(ci)"

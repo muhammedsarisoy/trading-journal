@@ -156,6 +156,35 @@ Postgres'te `generated always as … stored`, yani tek yerde durur.
 - Secret koda yazılmaz; `.env` / `.env.local` git dışıdır ve `.dockerignore`
   sayesinde imaja da kopyalanmaz
 
+## Güvenlik denetimi
+
+Üç katman, hepsi otomatik:
+
+**1. Yerel — push etmeden önce**
+
+```bash
+./scripts/security-check.sh
+```
+
+Sızmış anahtar (gitleaks, tüm geçmiş), takip edilen `.env`, `NEXT_PUBLIC_`
+değişkenine konmuş gizli anahtar, `govulncheck`, `npm audit`, derleme ve tip
+denetimi. Go kuruluysa doğrudan, değilse container'da çalışır; Node hiç gerekmez.
+
+**2. CI — her push ve PR'da, ayrıca haftalık**
+
+| Workflow | Ne yapar |
+|---|---|
+| `.github/workflows/security.yml` | gitleaks, projeye özel anahtar kontrolleri, `govulncheck`, `npm audit`, `go vet`, `gofmt`, tip denetimi, iki tarafın derlemesi |
+| `.github/workflows/codeql.yml` | CodeQL kod analizi (Go + TypeScript) — enjeksiyon, doğrulanmamış girdi gibi desenler |
+
+Haftalık cron önemli: kod değişmese de yeni açıklanan CVE'ler yakalanır.
+
+**3. GitHub tarafı**
+
+- **Secret scanning + push protection** — sızmış anahtar içeren push reddedilir
+- **Dependabot alerts + security updates** — açık kapatan sürüm çıkınca otomatik PR
+- `.github/dependabot.yml` haftalık olarak Go, npm, Docker ve Actions bağımlılıklarını tarar
+
 ## Bakım araçları
 
 Docker veya `psql` gerektirmez; `api/.env` içindeki `DATABASE_URL`'i kullanır.
