@@ -118,3 +118,33 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_ci_placeholder
           NEXT_PUBLIC_API_URL: http://localhost:8080
         run: npm run build
+
+  images:
+    name: Docker imajları
+    runs-on: ubuntu-latest
+    # Yukarıdaki işler sabit sürümlerle çalışıyor; Dockerfile'daki temel imaj
+    # sürümleri yalnız burada denenir. Bu iş olmadan bir base image yükseltmesi
+    # (node, golang, alpine) test edilmeden geçerdi.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: API imajı
+        run: docker build -t tj-api:ci ./api
+
+      - name: Web imajı
+        run: |
+          docker build -t tj-web:ci \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_ci_placeholder \
+            --build-arg NEXT_PUBLIC_API_URL=http://localhost:8080 \
+            ./web
+
+      - name: API imajı ayağa kalkıyor mu
+        run: |
+          # Veritabanı yok; sunucunun bağlantı hatasıyla düşmesi beklenir.
+          # Amaç imajın çalışabilir olduğunu görmek: eksik kütüphane, yanlış
+          # mimari ya da bozuk giriş noktası burada yakalanır.
+          out=$(docker run --rm -e DATABASE_URL=postgres://u:p@127.0.0.1:1/x \
+                  -e SUPABASE_JWT_SECRET=ci tj-api:ci 2>&1 || true)
+          echo "$out"
+          echo "$out" | grep -q "veritabanı" || { echo "beklenmeyen çıktı"; exit 1; }
