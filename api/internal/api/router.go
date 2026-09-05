@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/go-chi/httprate"
 
 	"github.com/muhammedsarisoy/trading-journal/api/internal/auth"
 	"github.com/muhammedsarisoy/trading-journal/api/internal/httpx"
@@ -35,6 +36,22 @@ func Router(s *Server, verifier *auth.Verifier, allowedOrigins []string) http.Ha
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(verifier.Middleware)
+
+		// Sınır kullanıcı kimliğine göre: IP'ye göre olsaydı X-Forwarded-For
+		// döndürülerek atlatılabilirdi (RealIP başlığa koşulsuz güveniyor).
+		// Kimlik jetondan geldiği için sahtelenemez.
+		r.Use(httprate.Limit(
+			240, time.Minute,
+			httprate.WithKeyFuncs(func(r *http.Request) (string, error) {
+				return auth.UserID(r.Context()), nil
+			}),
+			httprate.WithLimitHandler(func(w http.ResponseWriter, _ *http.Request) {
+				httpx.Error(w, &httpx.StatusError{
+					Status:  http.StatusTooManyRequests,
+					Message: "Çok fazla istek. Biraz bekleyip tekrar dene.",
+				})
+			}),
+		))
 
 		r.Method("GET", "/me", httpx.Handler(s.handleMe))
 		r.Method("GET", "/meta/distinct", httpx.Handler(s.distinctValues))

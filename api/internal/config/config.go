@@ -40,6 +40,20 @@ func Load() (*Config, error) {
 	if cfg.JWTSecret == "" && cfg.JWKSURL == "" {
 		return nil, fmt.Errorf("SUPABASE_JWT_SECRET veya SUPABASE_JWKS_URL tanımlı olmalı")
 	}
+	if len(cfg.AllowedOrigins) == 0 {
+		return nil, fmt.Errorf("ALLOWED_ORIGINS boş olamaz")
+	}
+	for _, o := range cfg.AllowedOrigins {
+		// "*" hiçbir zaman gerekmiyor: istemci tek ve bilinen bir origin.
+		// Açıkça reddediliyor ki kopyala-yapıştır bir yapılandırma sessizce
+		// API'yi herkese açmasın.
+		if o == "*" {
+			return nil, fmt.Errorf("ALLOWED_ORIGINS içinde \"*\" kabul edilmiyor; origin'leri tek tek yaz")
+		}
+		if !strings.HasPrefix(o, "http://") && !strings.HasPrefix(o, "https://") {
+			return nil, fmt.Errorf("geçersiz origin %q: http:// veya https:// ile başlamalı", o)
+		}
+	}
 
 	return cfg, nil
 }
@@ -55,7 +69,9 @@ func splitAndTrim(s string) []string {
 	parts := strings.Split(s, ",")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
-		if trimmed := strings.TrimSpace(p); trimmed != "" {
+		// Sondaki "/" CORS eşleşmesini sessizce bozar: origin karşılaştırması
+		// tam dize üzerinden yapılır.
+		if trimmed := strings.TrimRight(strings.TrimSpace(p), "/"); trimmed != "" {
 			out = append(out, trimmed)
 		}
 	}
