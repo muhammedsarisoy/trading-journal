@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -70,6 +71,33 @@ func main() {
 		fail(fmt.Errorf("ListFunds: %w", err))
 	}
 	fmt.Println("ListFunds ok")
+
+	// Eğitim defteri: okuma sorguları boş sonuç döner, amaç SQL'i doğrulamak.
+	if _, err := s.ListCourses(ctx, uid); err != nil {
+		fail(fmt.Errorf("ListCourses: %w", err))
+	}
+	if _, err := s.GetCourse(ctx, uid, uid); err != nil && !errors.Is(err, store.ErrNotFound) {
+		fail(fmt.Errorf("GetCourse: %w", err))
+	}
+	if _, err := s.ListLessons(ctx, uid, uid); err != nil {
+		fail(fmt.Errorf("ListLessons: %w", err))
+	}
+	if _, err := s.GetLesson(ctx, uid, uid); err != nil && !errors.Is(err, store.ErrNotFound) {
+		fail(fmt.Errorf("GetLesson: %w", err))
+	}
+	if _, err := s.ListNotes(ctx, uid, uid); err != nil {
+		fail(fmt.Errorf("ListNotes: %w", err))
+	}
+	if err := s.ReorderNotes(ctx, uid, uid, []string{uid}); err != nil {
+		fail(fmt.Errorf("ReorderNotes: %w", err))
+	}
+	if _, err := s.NoteImagePathsForLesson(ctx, uid, uid); err != nil {
+		fail(fmt.Errorf("NoteImagePathsForLesson: %w", err))
+	}
+	if _, err := s.NoteImagePathsForCourse(ctx, uid, uid); err != nil {
+		fail(fmt.Errorf("NoteImagePathsForCourse: %w", err))
+	}
+	fmt.Println("Egitim defteri ok")
 
 	if err := printGenerated(ctx, pool); err != nil {
 		fail(err)

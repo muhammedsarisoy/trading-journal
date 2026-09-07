@@ -229,3 +229,88 @@ type BreakdownRow struct {
 	AvgR       *float64 `json:"avg_r"`
 	TotalR     float64  `json:"total_r"`
 }
+
+// ---------------------------------------------------------------- Eğitim
+
+// Course, bir eğitim serisi (courses_enriched görünümünden okunur).
+type Course struct {
+	ID          string  `json:"id"`
+	Title       string  `json:"title"`
+	Instructor  *string `json:"instructor"`
+	URL         *string `json:"url"`
+	Description *string `json:"description"`
+	Archived    bool    `json:"archived"`
+
+	LessonCount    int        `json:"lesson_count"`
+	CompletedCount int        `json:"completed_count"`
+	NoteCount      int        `json:"note_count"`
+	LastStudiedOn  *time.Time `json:"last_studied_on"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// CourseInput, eğitim oluşturma/güncelleme gövdesi.
+type CourseInput struct {
+	Title       string  `json:"title"`
+	Instructor  *string `json:"instructor"`
+	URL         *string `json:"url"`
+	Description *string `json:"description"`
+	Archived    bool    `json:"archived"`
+}
+
+// Lesson, serinin bir günü.
+type Lesson struct {
+	ID          string     `json:"id"`
+	CourseID    string     `json:"course_id"`
+	DayNo       *int       `json:"day_no"`
+	Title       string     `json:"title"`
+	VideoURL    *string    `json:"video_url"`
+	StudiedOn   *time.Time `json:"studied_on"`
+	DurationMin *int       `json:"duration_min"`
+	Summary     *string    `json:"summary"`
+	Tags        []string   `json:"tags"`
+	Completed   bool       `json:"completed"`
+	NoteCount   int        `json:"note_count"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// LessonInput, gün oluşturma/güncelleme gövdesi.
+type LessonInput struct {
+	DayNo       *int       `json:"day_no"`
+	Title       string     `json:"title"`
+	VideoURL    *string    `json:"video_url"`
+	StudiedOn   *time.Time `json:"studied_on"`
+	DurationMin *int       `json:"duration_min"`
+	Summary     *string    `json:"summary"`
+	Tags        []string   `json:"tags"`
+	Completed   bool       `json:"completed"`
+}
+
+// LessonNote, gün içindeki tek not bloğu: bir yanda grafik, öbür yanda not.
+// Görselin kendisi Supabase Storage'ta; burada yalnız yolu tutulur.
+type LessonNote struct {
+	ID           string  `json:"id"`
+	LessonID     string  `json:"lesson_id"`
+	SortOrder    int     `json:"sort_order"`
+	Heading      *string `json:"heading"`
+	Body         *string `json:"body"`
+	ImagePath    *string `json:"image_path"`
+	ImageSide    string  `json:"image_side"`
+	TimestampSec *int    `json:"timestamp_sec"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// LessonNoteInput, not bloğu oluşturma/güncelleme gövdesi.
+type LessonNoteInput struct {
+	SortOrder    *int    `json:"sort_order"`
+	Heading      *string `json:"heading"`
+	Body         *string `json:"body"`
+	ImagePath    *string `json:"image_path"`
+	ImageSide    string  `json:"image_side"`
+	TimestampSec *int    `json:"timestamp_sec"`
+}

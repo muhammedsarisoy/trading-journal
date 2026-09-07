@@ -310,14 +310,9 @@ func (s *Server) createScreenshot(w http.ResponseWriter, r *http.Request) error 
 	if !allowed(in.Phase, "entry", "exit", "analysis") {
 		return httpx.BadRequest("Geçersiz aşama", nil)
 	}
-	// Yol her zaman kullanıcının kendi klasörüyle başlamalı ve dizinden
-	// çıkamamalı: "<uid>/../başkası/x" ön eki geçer ama başka klasörü işaret eder.
 	userID := auth.UserID(r.Context())
-	if !strings.HasPrefix(in.Path, userID+"/") {
-		return httpx.BadRequest("Dosya yolu bu kullanıcıya ait değil", nil)
-	}
-	if strings.Contains(in.Path, "..") || strings.Contains(in.Path, "//") {
-		return httpx.BadRequest("Dosya yolu geçersiz", nil)
+	if err := ownedStoragePath(userID, in.Path); err != nil {
+		return err
 	}
 
 	sc, err := s.store.CreateScreenshot(r.Context(), userID, chi.URLParam(r, "id"), in)

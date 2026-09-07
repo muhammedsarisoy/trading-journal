@@ -194,3 +194,8 @@ export const WEEKDAY_LABELS: Record<string, string> = {
 
 export const SCREENSHOT_BUCKET = "trade-screenshots";
 export const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
+
+export const LESSON_IMAGE_BUCKET = "lesson-images";
+
+/** Ders notlarına eklenen grafik görselleri. */
+export const MAX_LESSON_IMAGE_BYTES = 10 * 1024 * 1024;

@@ -1,12 +1,23 @@
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { MAX_SCREENSHOT_BYTES, SCREENSHOT_BUCKET } from "@/lib/constants";
+import {
+  LESSON_IMAGE_BUCKET,
+  MAX_LESSON_IMAGE_BYTES,
+  MAX_SCREENSHOT_BYTES,
+  SCREENSHOT_BUCKET,
+} from "@/lib/constants";
 import type {
   BreakdownDim,
   BreakdownRow,
   Bucket,
+  Course,
+  CourseInput,
   DistinctValues,
   Fund,
   FundInput,
+  Lesson,
+  LessonInput,
+  LessonNote,
+  LessonNoteInput,
   Platform,
   Screenshot,
   SeriesPoint,
@@ -183,4 +194,106 @@ export const screenshotsApi = {
 export async function removeStoragePaths(paths: string[]) {
   if (!paths.length) return;
   await supabaseBrowser().storage.from(SCREENSHOT_BUCKET).remove(paths);
+}
+
+// ------------------------------------------------------------------ Eğitim
+
+export const coursesApi = {
+  list: () => request<Course[]>("/courses/"),
+  get: (id: string) => request<Course>(`/courses/${id}`),
+  create: (input: CourseInput) =>
+    request<Course>("/courses/", { method: "POST", body: JSON.stringify(input) }),
+  update: (id: string, input: CourseInput) =>
+    request<Course>(`/courses/${id}`, { method: "PUT", body: JSON.stringify(input) }),
+  /** Eğitimle birlikte günleri ve notları da gider; görseller Storage'tan silinir. */
+  async remove(id: string) {
+    const { removed_paths } = await request<{ removed_paths: string[] }>(`/courses/${id}`, {
+      method: "DELETE",
+    });
+    await removeLessonImages(removed_paths);
+  },
+};
+
+export const lessonsApi = {
+  list: (courseId: string) => request<Lesson[]>(`/courses/${courseId}/lessons`),
+  get: (id: string) => request<Lesson>(`/lessons/${id}`),
+  create: (courseId: string, input: LessonInput) =>
+    request<Lesson>(`/courses/${courseId}/lessons`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  update: (id: string, input: LessonInput) =>
+    request<Lesson>(`/lessons/${id}`, { method: "PUT", body: JSON.stringify(input) }),
+  async remove(id: string) {
+    const { removed_paths } = await request<{ removed_paths: string[] }>(`/lessons/${id}`, {
+      method: "DELETE",
+    });
+    await removeLessonImages(removed_paths);
+  },
+};
+
+export const notesApi = {
+  list: (lessonId: string) => request<LessonNote[]>(`/lessons/${lessonId}/notes`),
+  create: (lessonId: string, input: LessonNoteInput) =>
+    request<LessonNote>(`/lessons/${lessonId}/notes`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  update: (id: string, input: LessonNoteInput) =>
+    request<LessonNote>(`/notes/${id}`, { method: "PUT", body: JSON.stringify(input) }),
+
+  /** Blok silinince görseli de Storage'tan kaldırılır. */
+  async remove(id: string) {
+    const { removed_path } = await request<{ removed_path: string }>(`/notes/${id}`, {
+      method: "DELETE",
+    });
+    if (removed_path) await removeLessonImages([removed_path]);
+  },
+
+  reorder: (lessonId: string, ids: string[]) =>
+    request<LessonNote[]>(`/lessons/${lessonId}/notes/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
+
+  /** Grafik görseli doğrudan Storage'a yüklenir; not bloğu yalnız yolu tutar. */
+  async uploadImage(lessonId: string, file: File): Promise<string> {
+    if (!file.type.startsWith("image/")) {
+      throw new ApiError("Yalnız görsel yüklenebilir", 415);
+    }
+    if (file.size > MAX_LESSON_IMAGE_BYTES) {
+      throw new ApiError("Dosya 10 MB sınırını aşıyor", 413);
+    }
+
+    const supabase = supabaseBrowser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new ApiError("Oturum bulunamadı", 401);
+
+    const ext = (file.name.split(".").pop() || "png").toLowerCase();
+    const path = `${user.id}/${lessonId}/${crypto.randomUUID()}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from(LESSON_IMAGE_BUCKET)
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (error) throw new ApiError(`Yükleme başarısız: ${error.message}`, 500);
+
+    return path;
+  },
+
+  /** Özel bucket olduğu için görüntüleme imzalı bağlantı ister. */
+  async signedUrl(path: string, expiresIn = 3600) {
+    const { data, error } = await supabaseBrowser()
+      .storage.from(LESSON_IMAGE_BUCKET)
+      .createSignedUrl(path, expiresIn);
+    if (error) throw new ApiError(error.message, 500);
+    return data.signedUrl;
+  },
+};
+
+/** Ders görsellerini Storage'tan kaldırır. */
+export async function removeLessonImages(paths: string[]) {
+  if (!paths.length) return;
+  await supabaseBrowser().storage.from(LESSON_IMAGE_BUCKET).remove(paths);
 }

@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { BarChart3, LayoutDashboard, List, LogOut, Menu, Plus, Settings } from "lucide-react";
+import {
+  BarChart3,
+  CalendarDays,
+  GraduationCap,
+  LayoutDashboard,
+  List,
+  LogOut,
+  Menu,
+  Plus,
+  Settings,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,8 +30,10 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 
 const NAV = [
   { href: "/dashboard", label: "Panel", icon: LayoutDashboard },
+  { href: "/calendar", label: "Takvim", icon: CalendarDays },
   { href: "/trades", label: "İşlemler", icon: List },
   { href: "/analytics", label: "Analiz", icon: BarChart3 },
+  { href: "/learn", label: "Eğitim", icon: GraduationCap },
   { href: "/settings", label: "Ayarlar", icon: Settings },
 ];
 

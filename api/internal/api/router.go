@@ -83,6 +83,31 @@ func Router(s *Server, verifier *auth.Verifier, allowedOrigins []string) http.Ha
 
 		r.Method("DELETE", "/screenshots/{id}", httpx.Handler(s.deleteScreenshot))
 
+		// Eğitim defteri: eğitim > gün > not bloğu
+		r.Route("/courses", func(r chi.Router) {
+			r.Method("GET", "/", httpx.Handler(s.listCourses))
+			r.Method("POST", "/", httpx.Handler(s.createCourse))
+			r.Method("GET", "/{id}", httpx.Handler(s.getCourse))
+			r.Method("PUT", "/{id}", httpx.Handler(s.updateCourse))
+			r.Method("DELETE", "/{id}", httpx.Handler(s.deleteCourse))
+			r.Method("GET", "/{id}/lessons", httpx.Handler(s.listLessons))
+			r.Method("POST", "/{id}/lessons", httpx.Handler(s.createLesson))
+		})
+
+		r.Route("/lessons", func(r chi.Router) {
+			r.Method("GET", "/{id}", httpx.Handler(s.getLesson))
+			r.Method("PUT", "/{id}", httpx.Handler(s.updateLesson))
+			r.Method("DELETE", "/{id}", httpx.Handler(s.deleteLesson))
+			r.Method("GET", "/{id}/notes", httpx.Handler(s.listNotes))
+			r.Method("POST", "/{id}/notes", httpx.Handler(s.createNote))
+			r.Method("POST", "/{id}/notes/reorder", httpx.Handler(s.reorderNotes))
+		})
+
+		r.Route("/notes", func(r chi.Router) {
+			r.Method("PUT", "/{id}", httpx.Handler(s.updateNote))
+			r.Method("DELETE", "/{id}", httpx.Handler(s.deleteNote))
+		})
+
 		r.Route("/stats", func(r chi.Router) {
 			r.Method("GET", "/summary", httpx.Handler(s.statsSummary))
 			r.Method("GET", "/series", httpx.Handler(s.statsSeries))

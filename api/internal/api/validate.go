@@ -165,3 +165,66 @@ func trimPtr(p **string) {
 	}
 	*p = &t
 }
+
+// ownedStoragePath, Storage yolunun kullanıcının kendi klasöründe kaldığını
+// doğrular: "<uid>/../başkası/x" ön eki geçer ama başka klasörü işaret eder.
+func ownedStoragePath(userID, path string) error {
+	if !strings.HasPrefix(path, userID+"/") {
+		return httpx.BadRequest("Dosya yolu bu kullanıcıya ait değil", nil)
+	}
+	if strings.Contains(path, "..") || strings.Contains(path, "//") {
+		return httpx.BadRequest("Dosya yolu geçersiz", nil)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------- Eğitim
+
+func validateCourse(in *model.CourseInput) error {
+	in.Title = strings.TrimSpace(in.Title)
+	if in.Title == "" {
+		return httpx.BadRequest("Eğitim adı zorunlu", nil)
+	}
+	trimPtr(&in.Instructor)
+	trimPtr(&in.URL)
+	trimPtr(&in.Description)
+	return nil
+}
+
+func validateLesson(in *model.LessonInput) error {
+	in.Title = strings.TrimSpace(in.Title)
+	if in.Title == "" {
+		return httpx.BadRequest("Gün başlığı zorunlu", nil)
+	}
+	if in.DayNo != nil && *in.DayNo < 0 {
+		return httpx.BadRequest("Gün numarası eksi olamaz", nil)
+	}
+	if in.DurationMin != nil && *in.DurationMin <= 0 {
+		in.DurationMin = nil
+	}
+	in.Tags = cleanList(in.Tags)
+	trimPtr(&in.VideoURL)
+	trimPtr(&in.Summary)
+	return nil
+}
+
+func validateNote(in *model.LessonNoteInput, userID string) error {
+	if in.ImageSide == "" {
+		in.ImageSide = "right"
+	}
+	if !allowed(in.ImageSide, "left", "right") {
+		return httpx.BadRequest("Görselin yeri sol ya da sağ olmalı", nil)
+	}
+	if in.TimestampSec != nil && *in.TimestampSec < 0 {
+		return httpx.BadRequest("Video anı eksi olamaz", nil)
+	}
+	trimPtr(&in.Heading)
+	trimPtr(&in.Body)
+	trimPtr(&in.ImagePath)
+	if in.ImagePath != nil {
+		if err := ownedStoragePath(userID, *in.ImagePath); err != nil {
+			return err
+		}
+	}
+	return nil
+}

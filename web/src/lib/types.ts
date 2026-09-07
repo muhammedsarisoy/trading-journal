@@ -223,3 +223,85 @@ export interface DistinctValues {
   tag: string[];
   confluence: string[];
 }
+
+// ------------------------------------------------------------------ Eğitim
+
+export type ImageSide = "left" | "right";
+
+export interface Course {
+  id: string;
+  title: string;
+  instructor: string | null;
+  url: string | null;
+  description: string | null;
+  archived: boolean;
+
+  lesson_count: number;
+  completed_count: number;
+  note_count: number;
+  last_studied_on: string | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CourseInput {
+  title: string;
+  instructor: string | null;
+  url: string | null;
+  description: string | null;
+  archived: boolean;
+}
+
+/** Eğitimin bir günü: video + özet + not blokları. */
+export interface Lesson {
+  id: string;
+  course_id: string;
+  day_no: number | null;
+  title: string;
+  video_url: string | null;
+  studied_on: string | null;
+  duration_min: number | null;
+  summary: string | null;
+  tags: string[];
+  completed: boolean;
+  note_count: number;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LessonInput {
+  day_no: number | null;
+  title: string;
+  video_url: string | null;
+  studied_on: string | null;
+  duration_min: number | null;
+  summary: string | null;
+  tags: string[];
+  completed: boolean;
+}
+
+/** Tek not bloğu: bir yanda grafik, öbür yanda o grafiğe dair not. */
+export interface LessonNote {
+  id: string;
+  lesson_id: string;
+  sort_order: number;
+  heading: string | null;
+  body: string | null;
+  image_path: string | null;
+  image_side: ImageSide;
+  timestamp_sec: number | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LessonNoteInput {
+  sort_order: number | null;
+  heading: string | null;
+  body: string | null;
+  image_path: string | null;
+  image_side: ImageSide;
+  timestamp_sec: number | null;
+}
