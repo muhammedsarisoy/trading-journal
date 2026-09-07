@@ -11,8 +11,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!user) redirect("/login");
 
+  // Google gibi sağlayıcılar adı full_name/name ile gönderiyor.
+  const meta = user.user_metadata ?? {};
   const displayName =
-    (user.user_metadata?.display_name as string | undefined) ||
+    (meta.display_name as string | undefined) ||
+    (meta.full_name as string | undefined) ||
+    (meta.name as string | undefined) ||
     user.email?.split("@")[0] ||
     "Trader";
 

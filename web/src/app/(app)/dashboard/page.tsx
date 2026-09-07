@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { BUCKETS } from "@/lib/constants";
 import { statsApi, tradesApi } from "@/lib/api";
 import {
+  currencyOf,
   DEFAULT_FILTERS,
   FilterBar,
   filtersToQuery,
@@ -15,16 +16,22 @@ import {
 } from "@/components/filter-bar";
 import { useMeta } from "@/hooks/use-meta";
 import { Metric, MetricRow, toneOf } from "@/components/metric";
-import { RTape } from "@/components/charts/r-tape";
 import { EquityChart } from "@/components/charts/equity-chart";
-import { PnlBarChart, type ChartUnit } from "@/components/charts/pnl-bar-chart";
+import { type ChartUnit } from "@/components/charts/pnl-bar-chart";
 import { TradesTable } from "@/components/trades-table";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { money, percent, rMultiple, ratio } from "@/lib/format";
 import type { Bucket, SeriesPoint, Summary, Trade } from "@/lib/types";
 
-const TAPE_LIMIT = 200;
+const RECENT_LIMIT = 8;
 
 export default function DashboardPage() {
   const { funds } = useMeta();
@@ -34,18 +41,11 @@ export default function DashboardPage() {
 
   const [summary, setSummary] = useState<Summary | null>(null);
   const [series, setSeries] = useState<SeriesPoint[]>([]);
-  const [closed, setClosed] = useState<Trade[]>([]);
+  const [recent, setRecent] = useState<Trade[]>([]);
   const [openTrades, setOpenTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Para birimi seçili hesaptan; seçim yoksa ilk hesabınki.
-  const currency = useMemo(() => {
-    if (filters.currency !== "__all__") return filters.currency;
-    if (filters.fundId !== "__all__") {
-      return funds.find((f) => f.id === filters.fundId)?.currency ?? "USD";
-    }
-    return funds[0]?.currency ?? "USD";
-  }, [filters, funds]);
+  const currency = useMemo(() => currencyOf(filters, funds), [filters, funds]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,12 +54,12 @@ export default function DashboardPage() {
       const [s, ser, done, open] = await Promise.all([
         statsApi.summary(query),
         statsApi.series(bucket, query),
-        tradesApi.list({ ...query, status: "closed", limit: TAPE_LIMIT }),
+        tradesApi.list({ ...query, status: "closed", limit: RECENT_LIMIT }),
         tradesApi.list({ ...query, status: "open", limit: 20 }),
       ]);
       setSummary(s);
       setSeries(ser);
-      setClosed(done.items);
+      setRecent(done.items);
       setOpenTrades(open.items);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Veriler yüklenemedi");
@@ -75,7 +75,7 @@ export default function DashboardPage() {
   const isEmpty = !loading && summary?.trade_count === 0;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-medium text-pretty">Panel</h1>
         <FilterBar filters={filters} onChange={setFilters} funds={funds} />
@@ -85,131 +85,111 @@ export default function DashboardPage() {
         <EmptyState hasFunds={funds.length > 0} />
       ) : (
         <>
-          {/* ---------------------------------------------- kahraman */}
-          <section className="border-y border-border">
-            <div className="grid gap-6 px-4 py-6 lg:grid-cols-[minmax(0,20rem)_1fr] lg:items-center">
-              <Metric
-                size="hero"
-                value={rMultiple(summary?.total_r)}
-                label="toplam R"
-                tone={toneOf(summary?.total_r)}
-                sub={
-                  summary?.avg_r != null
-                    ? `işlem başına ${ratio(summary.avg_r)}R`
-                    : "risk tutarı girilmiş işlem yok"
-                }
-                loading={loading}
-              />
-              <RTape trades={closed} />
-            </div>
+          {/* ------------------------------------------------ ölçümler */}
+          <MetricRow className="border-y border-border grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+            <Metric
+              value={money(summary?.net_pnl, currency, { signed: true })}
+              label="net kâr / zarar"
+              tone={toneOf(summary?.net_pnl)}
+              loading={loading}
+            />
+            <Metric
+              size="sm"
+              value={rMultiple(summary?.total_r)}
+              label="toplam R"
+              tone={toneOf(summary?.total_r)}
+              sub={summary?.avg_r != null ? `işlem başına ${ratio(summary.avg_r)}R` : undefined}
+              loading={loading}
+            />
+            <Metric
+              size="sm"
+              value={percent(summary?.win_rate)}
+              label="kazanma oranı"
+              sub={`${summary?.win_count ?? 0}K / ${summary?.loss_count ?? 0}Z`}
+              loading={loading}
+            />
+            <Metric
+              size="sm"
+              value={ratio(summary?.profit_factor)}
+              label="profit factor"
+              loading={loading}
+            />
+            <Metric
+              size="sm"
+              value={rMultiple(-Math.abs(summary?.max_drawdown_r ?? 0))}
+              label="en derin geri çekilme"
+              tone={summary?.max_drawdown_r ? "short" : "neutral"}
+              loading={loading}
+            />
+          </MetricRow>
 
-            <MetricRow className="border-t border-border sm:grid-cols-2 lg:grid-cols-4">
-              <Metric
-                size="sm"
-                value={money(summary?.net_pnl, currency, { signed: true })}
-                label="net kâr / zarar"
-                tone={toneOf(summary?.net_pnl)}
-                loading={loading}
-              />
-              <Metric
-                size="sm"
-                value={percent(summary?.win_rate)}
-                label="kazanma oranı"
-                sub={`${summary?.win_count ?? 0} kazanç, ${summary?.loss_count ?? 0} kayıp`}
-                loading={loading}
-              />
-              <Metric
-                size="sm"
-                value={ratio(summary?.profit_factor)}
-                label="profit factor"
-                sub={`beklenti ${money(summary?.expectancy, currency, { signed: true })}`}
-                loading={loading}
-              />
-              <Metric
-                size="sm"
-                value={rMultiple(-Math.abs(summary?.max_drawdown_r ?? 0))}
-                label="en derin geri çekilme"
-                tone={summary?.max_drawdown_r ? "short" : "neutral"}
-                sub={money(summary?.max_drawdown, currency)}
-                loading={loading}
-              />
-            </MetricRow>
-          </section>
-
-          {/* ------------------------------------------------ seyir */}
-          <section className="space-y-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <h2 className="text-base font-medium">
-                {unit === "r" ? "Dönemsel R" : "Dönemsel kâr / zarar"}
+          {/* --------------------------------------------- sermaye eğrisi */}
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm text-muted-foreground">
+                {unit === "r" ? "Kümülatif R" : "Kümülatif kâr / zarar"}
               </h2>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2">
                 <Tabs value={unit} onValueChange={(v) => setUnit(v as ChartUnit)}>
                   <TabsList>
                     <TabsTrigger value="r">R</TabsTrigger>
                     <TabsTrigger value="money">Para</TabsTrigger>
                   </TabsList>
                 </Tabs>
-                <Tabs value={bucket} onValueChange={(v) => setBucket(v as Bucket)}>
-                  <TabsList>
+                <Select value={bucket} onValueChange={(v) => setBucket(v as Bucket)}>
+                  <SelectTrigger size="sm" className="w-[110px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
                     {BUCKETS.map((b) => (
-                      <TabsTrigger key={b.value} value={b.value}>
+                      <SelectItem key={b.value} value={b.value}>
                         {b.label}
-                      </TabsTrigger>
+                      </SelectItem>
                     ))}
-                  </TabsList>
-                </Tabs>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
             {loading ? (
-              <div className="flex h-64 items-center justify-center text-muted-foreground">
+              <div className="flex h-48 items-center justify-center text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                 <span className="sr-only">Yükleniyor…</span>
               </div>
             ) : series.length === 0 ? (
-              <p className="py-16 text-center text-sm text-muted-foreground">
+              <p className="border-y border-border py-14 text-center text-sm text-muted-foreground">
                 Bu aralıkta kapanmış işlem yok.
               </p>
             ) : (
-              <div className="space-y-8 border-y border-border py-6">
-                <PnlBarChart
-                  data={series}
-                  bucket={bucket}
-                  currency={currency}
-                  unit={unit}
-                  className="h-56 w-full"
-                />
-                <EquityChart
-                  data={series}
-                  bucket={bucket}
-                  currency={currency}
-                  unit={unit}
-                  className="h-48 w-full"
-                />
-              </div>
+              <EquityChart
+                data={series}
+                bucket={bucket}
+                currency={currency}
+                unit={unit}
+                className="h-48 w-full"
+              />
             )}
           </section>
 
           {/* --------------------------------------- açık pozisyonlar */}
           {openTrades.length > 0 && (
-            <section className="space-y-3">
-              <h2 className="text-base font-medium">
-                Açık pozisyonlar{" "}
-                <span className="num text-muted-foreground">{openTrades.length}</span>
+            <section className="space-y-2">
+              <h2 className="text-sm text-muted-foreground">
+                Açık pozisyonlar <span className="num">{openTrades.length}</span>
               </h2>
               <TradesTable trades={openTrades} />
             </section>
           )}
 
           {/* ------------------------------------------------ defter */}
-          <section className="space-y-3">
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 className="text-base font-medium">Defter</h2>
+          <section className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm text-muted-foreground">Son işlemler</h2>
               <Button asChild variant="ghost" size="sm">
                 <Link href="/trades">Tüm işlemler</Link>
               </Button>
             </div>
-            <TradesTable trades={closed.slice(0, 12)} loading={loading} />
+            <TradesTable trades={recent} loading={loading} />
           </section>
         </>
       )}

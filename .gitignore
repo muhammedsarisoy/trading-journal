@@ -24,3 +24,6 @@ Thumbs.db
 # Üçüncü parti agent skill'leri: skills-lock.json'dan yeniden kurulur.
 .agents/skills/
 .claude/skills/
+
+# Geçici agent worktree'leri
+.claude/worktrees/
