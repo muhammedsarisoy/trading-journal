@@ -131,8 +131,8 @@ export const DEFAULT_FUNDS: {
   { name: "BEM Funding", currency: "USD", is_prop: true, broker: null },
   { name: "Funding Pips", currency: "USD", is_prop: true, broker: null },
   { name: "Breakout", currency: "USD", is_prop: true, broker: null },
-  { name: "OKX", currency: "USD", is_prop: false, broker: null },
-  { name: "Broker", currency: "USD", is_prop: false, broker: null },
+  { name: "OKX", currency: "USD", is_prop: false, broker: "OKX" },
+  { name: "Tickmill", currency: "USD", is_prop: false, broker: "Tickmill" },
 ];
 
 export const BUCKETS: { value: Bucket; label: string }[] = [
