@@ -6,6 +6,7 @@ import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { TradesTable } from "@/components/trades-table";
+import { ExportTradesPdf } from "@/components/export-trades-pdf";
 import {
   ALL,
   DEFAULT_FILTERS,
@@ -15,7 +16,7 @@ import {
 } from "@/components/filter-bar";
 import { useDistinct, useMeta } from "@/hooks/use-meta";
 import { tradesApi } from "@/lib/api";
-import { ASSET_CLASSES } from "@/lib/constants";
+import { ASSET_CLASSES, ASSET_LABELS, RANGES } from "@/lib/constants";
 import { money, pnlTone } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -29,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import type { AssetClass, Trade, TradeStatus } from "@/lib/types";
+import type { AssetClass, Trade, TradeQuery, TradeStatus } from "@/lib/types";
 
 const PAGE_SIZE = 50;
 
@@ -54,15 +55,23 @@ export default function TradesPage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Tabloyu da PDF çıktısını da besleyen tek sorgu.
+  const query = useMemo<TradeQuery>(
+    () => ({
+      ...filtersToQuery(filters),
+      status: status === ALL ? undefined : status,
+      symbol: symbol === ALL ? undefined : symbol,
+      asset_class: assetClass === ALL ? undefined : (assetClass as AssetClass),
+      q: debounced || undefined,
+    }),
+    [filters, status, symbol, assetClass, debounced],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await tradesApi.list({
-        ...filtersToQuery(filters),
-        status: status === ALL ? undefined : status,
-        symbol: symbol === ALL ? undefined : symbol,
-        asset_class: assetClass === ALL ? undefined : (assetClass as AssetClass),
-        q: debounced || undefined,
+        ...query,
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
       });
@@ -73,7 +82,7 @@ export default function TradesPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, status, symbol, assetClass, debounced, page]);
+  }, [query, page]);
 
   useEffect(() => {
     void load();
@@ -82,7 +91,29 @@ export default function TradesPage() {
   // Filtre değişince ilk sayfaya dön.
   useEffect(() => {
     setPage(0);
-  }, [filters, status, symbol, assetClass, debounced]);
+  }, [query]);
+
+  // PDF çıktısının başına yazılan, ekranda seçili olan filtreler.
+  const filterLabels = useMemo(() => {
+    const labels = [`Aralık: ${RANGES.find((r) => r.value === filters.range)?.label ?? "Tümü"}`];
+    labels.push(
+      `Hesap: ${
+        filters.fundId === ALL
+          ? "Tümü"
+          : (funds.find((f) => f.id === filters.fundId)?.name ?? "—")
+      }`,
+    );
+    if (filters.currency !== ALL) labels.push(`Para birimi: ${filters.currency}`);
+    labels.push(
+      `Durum: ${status === ALL ? "Tümü" : status === "closed" ? "Kapalı" : "Açık"}`,
+    );
+    if (symbol !== ALL) labels.push(`Sembol: ${symbol}`);
+    if (assetClass !== ALL) {
+      labels.push(`Enstrüman: ${ASSET_LABELS[assetClass as AssetClass] ?? assetClass}`);
+    }
+    if (debounced) labels.push(`Arama: "${debounced}"`);
+    return labels;
+  }, [filters, funds, status, symbol, assetClass, debounced]);
 
   const pageNetPnl = useMemo(
     () => trades.reduce((sum, t) => sum + (t.pnl ?? 0), 0),
@@ -103,11 +134,14 @@ export default function TradesPage() {
             </span>
           </p>
         </div>
-        <Button asChild>
-          <Link href="/trades/new">
-            <Plus className="size-4" /> Yeni işlem
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportTradesPdf query={query} filters={filterLabels} disabled={loading} />
+          <Button asChild>
+            <Link href="/trades/new">
+              <Plus className="size-4" /> Yeni işlem
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Card>
