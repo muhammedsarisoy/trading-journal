@@ -44,6 +44,14 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+
+  // Takvim İşlemler'in, Analiz Panel'in içine taşındı; eski yer imleri çalışsın.
+  async redirects() {
+    return [
+      { source: "/calendar", destination: "/trades?view=calendar", permanent: true },
+      { source: "/analytics", destination: "/dashboard", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

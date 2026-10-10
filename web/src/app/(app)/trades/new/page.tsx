@@ -10,13 +10,8 @@ export default function NewTradePage() {
   const distinct = useDistinct();
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Yeni işlem</h1>
-        <p className="text-sm text-muted-foreground">
-          Fiyat bilgisi, karar gerekçesi ve psikoloji kaydını birlikte tut.
-        </p>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <h1 className="text-xl font-medium">Yeni işlem</h1>
 
       {loading ? (
         <div className="flex h-64 items-center justify-center text-muted-foreground">

@@ -1,0 +1,8 @@
+# Depo her yerde LF: Windows'ta core.autocrlf=true dosyaları CRLF yazınca
+# gofmt ve kabuk betikleri (#!/usr/bin/env bash\r) bozuluyordu.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

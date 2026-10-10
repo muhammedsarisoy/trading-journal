@@ -305,3 +305,52 @@ export interface LessonNoteInput {
   image_side: ImageSide;
   timestamp_sec: number | null;
 }
+
+// ------------------------------------------------------------------ Prop
+
+/** fee: challenge ücreti · payout: firmadan alınan ödeme · refund: iade edilen ücret */
+export type PropKind = "fee" | "payout" | "refund";
+
+export interface PropTransaction {
+  id: string;
+  kind: PropKind;
+  firm: string;
+  amount: number;
+  currency: string;
+  occurred_on: string; // YYYY-MM-DD
+  account_size: number | null;
+  fund_id: string | null;
+  fund_name: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface PropTransactionInput {
+  kind: PropKind;
+  firm: string;
+  amount: number;
+  currency: string;
+  occurred_on: string;
+  account_size: number | null;
+  fund_id: string | null;
+  note: string | null;
+}
+
+export interface PropTotals {
+  fees: number;
+  refunds: number;
+  payouts: number;
+  /** payouts + refunds − fees */
+  net: number;
+  /** net ÷ fees; ücret yoksa null */
+  roi: number | null;
+  challenge_count: number;
+  payout_count: number;
+}
+
+export interface PropSummary {
+  total: PropTotals;
+  by_firm: (PropTotals & { firm: string })[];
+  by_month: (PropTotals & { month: string })[];
+  currencies: string[];
+}

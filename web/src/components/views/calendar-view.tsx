@@ -8,13 +8,7 @@ import { ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { tradesApi } from "@/lib/api";
-import {
-  ALL,
-  currencyOf,
-  DEFAULT_FILTERS,
-  FilterBar,
-  type Filters,
-} from "@/components/filter-bar";
+import { ALL, currencyOf, DEFAULT_FILTERS, FilterBar, type Filters } from "@/components/filter-bar";
 import { useMeta } from "@/hooks/use-meta";
 import { Metric, MetricRow } from "@/components/metric";
 import { PnlCalendar, groupByDay, type CalendarUnit } from "@/components/pnl-calendar";
@@ -28,7 +22,8 @@ import type { Trade } from "@/lib/types";
 
 const MONTH_LIMIT = 500;
 
-export default function CalendarPage() {
+/** Ay takvimi: gün gün K/Z ve seçilen günün işlemleri. İşlemler sayfasının takvim görünümü. */
+export function CalendarView() {
   const { funds } = useMeta();
   const [filters, setFilters] = useState<Filters>({ ...DEFAULT_FILTERS, range: "all" });
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
@@ -53,7 +48,9 @@ export default function CalendarPage() {
       });
       setTrades(res.items);
       if (res.total > res.items.length) {
-        toast.warning(`Bu ayda ${res.total} işlem var; ilk ${res.items.length} tanesi gösteriliyor.`);
+        toast.warning(
+          `Bu ayda ${res.total} işlem var; ilk ${res.items.length} tanesi gösteriliyor.`,
+        );
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Takvim verisi yüklenemedi");
@@ -114,18 +111,15 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-medium text-pretty">Takvim</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterBar filters={filters} onChange={setFilters} funds={funds} showRange={false} />
-          <Tabs value={unit} onValueChange={(v) => setUnit(v as CalendarUnit)}>
-            <TabsList>
-              <TabsTrigger value="money">Para</TabsTrigger>
-              <TabsTrigger value="r">R</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-      </header>
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterBar filters={filters} onChange={setFilters} funds={funds} showRange={false} />
+        <Tabs value={unit} onValueChange={(v) => setUnit(v as CalendarUnit)}>
+          <TabsList>
+            <TabsTrigger value="money">Para</TabsTrigger>
+            <TabsTrigger value="r">R</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
 
       {/* ------------------------------------------------- ay şeridi */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
@@ -150,11 +144,7 @@ export default function CalendarPage() {
             <ChevronRight className="size-4" aria-hidden="true" />
           </Button>
           {!isCurrentMonth && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => goToMonth(startOfMonth(new Date()))}
-            >
+            <Button variant="ghost" size="sm" onClick={() => goToMonth(startOfMonth(new Date()))}>
               Bu ay
             </Button>
           )}
