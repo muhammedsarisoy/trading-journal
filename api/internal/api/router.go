@@ -131,6 +131,15 @@ func Router(s *Server, allowedOrigins []string) http.Handler {
 				r.Method("DELETE", "/{id}", httpx.Handler(s.deleteNote))
 			})
 
+			// Prop firma harcamaları: ücret, payout, iade
+			r.Route("/prop", func(r chi.Router) {
+				r.Method("GET", "/summary", httpx.Handler(s.propSummary))
+				r.Method("GET", "/transactions", httpx.Handler(s.listProp))
+				r.Method("POST", "/transactions", httpx.Handler(s.createProp))
+				r.Method("PUT", "/transactions/{id}", httpx.Handler(s.updateProp))
+				r.Method("DELETE", "/transactions/{id}", httpx.Handler(s.deleteProp))
+			})
+
 			r.Route("/stats", func(r chi.Router) {
 				r.Method("GET", "/summary", httpx.Handler(s.statsSummary))
 				r.Method("GET", "/series", httpx.Handler(s.statsSeries))

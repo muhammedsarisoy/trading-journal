@@ -314,3 +314,63 @@ type LessonNoteInput struct {
 	ImageSide    string  `json:"image_side"`
 	TimestampSec *int    `json:"timestamp_sec"`
 }
+
+// ------------------------------------------------------------------ Prop
+
+// PropTransaction, prop firmaya ödenen ya da firmadan alınan tek bir tutar.
+type PropTransaction struct {
+	ID          string    `json:"id"`
+	Kind        string    `json:"kind"` // fee | payout | refund
+	Firm        string    `json:"firm"`
+	Amount      float64   `json:"amount"`
+	Currency    string    `json:"currency"`
+	OccurredOn  string    `json:"occurred_on"` // YYYY-MM-DD
+	AccountSize *float64  `json:"account_size"`
+	FundID      *string   `json:"fund_id"`
+	FundName    *string   `json:"fund_name"`
+	Note        *string   `json:"note"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// PropTransactionInput, oluşturma/güncelleme gövdesi.
+type PropTransactionInput struct {
+	Kind        string   `json:"kind"`
+	Firm        string   `json:"firm"`
+	Amount      float64  `json:"amount"`
+	Currency    string   `json:"currency"`
+	OccurredOn  string   `json:"occurred_on"`
+	AccountSize *float64 `json:"account_size"`
+	FundID      *string  `json:"fund_id"`
+	Note        *string  `json:"note"`
+}
+
+// PropTotals, bir grup harcamanın özeti.
+type PropTotals struct {
+	Fees           float64  `json:"fees"`
+	Refunds        float64  `json:"refunds"`
+	Payouts        float64  `json:"payouts"`
+	Net            float64  `json:"net"` // payouts + refunds - fees
+	ROI            *float64 `json:"roi"` // net / fees; ücret yoksa null
+	ChallengeCount int      `json:"challenge_count"`
+	PayoutCount    int      `json:"payout_count"`
+}
+
+// PropFirmTotals, firma bazında özet.
+type PropFirmTotals struct {
+	Firm string `json:"firm"`
+	PropTotals
+}
+
+// PropMonth, aylık harcama ve gelir.
+type PropMonth struct {
+	Month string `json:"month"` // YYYY-MM
+	PropTotals
+}
+
+// PropSummary, Prop sayfasının üst kısmı.
+type PropSummary struct {
+	Total      PropTotals       `json:"total"`
+	ByFirm     []PropFirmTotals `json:"by_firm"`
+	ByMonth    []PropMonth      `json:"by_month"`
+	Currencies []string         `json:"currencies"` // birden fazlaysa toplamlar karışık para birimidir
+}

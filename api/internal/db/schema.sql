@@ -295,6 +295,29 @@ create trigger lesson_notes_touch_updated_at
   before update on public.lesson_notes
   for each row execute function public.touch_updated_at();
 
+-- ---------------------------------------------------------------------
+-- 9. Prop firma harcamaları
+--    fee    challenge / hesap ücreti (harcama)
+--    payout firmadan alınan ödeme
+--    refund ilk payout'la iade edilen challenge ücreti
+--    Net = payout + refund − fee. Tutar her zaman pozitif; yönü kind belirler.
+-- ---------------------------------------------------------------------
+create table if not exists public.prop_transactions (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references public.users on delete cascade,
+  kind         text not null check (kind in ('fee','payout','refund')),
+  firm         text not null,
+  amount       numeric(18,2) not null check (amount > 0),
+  currency     text not null default 'USD',
+  occurred_on  date not null default current_date,
+  account_size numeric(18,2) check (account_size > 0),   -- ücret için: 100000 gibi
+  fund_id      uuid references public.funds on delete set null,
+  note         text,
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists prop_tx_user_date_idx on public.prop_transactions (user_id, occurred_on desc, created_at desc);
+
 -- Liste görünümü — gün ve not sayıları tek sorguda
 drop view if exists public.courses_enriched;
 create view public.courses_enriched as
