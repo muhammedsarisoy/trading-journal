@@ -172,7 +172,7 @@ export default function TradeDetailPage() {
           <CardContent className="space-y-4 text-sm">
             <Row label="Strateji" value={trade.setup ?? "—"} />
             <div>
-              <div className="text-xs uppercase text-muted-foreground">Giriş gerekçesi</div>
+              <div className="text-xs text-muted-foreground">Giriş gerekçesi</div>
               <p className="mt-1 whitespace-pre-wrap">{trade.reason || "—"}</p>
             </div>
             <TagRow label="Nelere baktım" items={trade.confluences} />
@@ -214,11 +214,11 @@ export default function TradeDetailPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <div className="text-xs uppercase text-muted-foreground">Çıkarılan ders</div>
+              <div className="text-xs text-muted-foreground">Çıkarılan ders</div>
               <p className="mt-1 whitespace-pre-wrap">{trade.lesson || "—"}</p>
             </div>
             <div>
-              <div className="text-xs uppercase text-muted-foreground">Notlar</div>
+              <div className="text-xs text-muted-foreground">Notlar</div>
               <p className="mt-1 whitespace-pre-wrap">{trade.notes || "—"}</p>
             </div>
           </div>
@@ -242,7 +242,7 @@ function Metric({
   return (
     <Card className="gap-0 py-4">
       <CardContent className="px-4">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="text-xs text-muted-foreground">{label}</div>
         <div className={cn("num mt-1 text-xl font-semibold", className)}>{value}</div>
       </CardContent>
     </Card>
@@ -252,7 +252,7 @@ function Metric({
 function Row({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
     <div>
-      <div className="text-xs uppercase text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className={cn("mt-0.5", mono && "num")}>{value}</div>
     </div>
   );
@@ -269,7 +269,7 @@ function TagRow({
 }) {
   return (
     <div>
-      <div className="text-xs uppercase text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       {items.length ? (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {items.map((item) => (

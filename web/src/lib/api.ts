@@ -18,6 +18,10 @@ import type {
   LessonNote,
   LessonNoteInput,
   Platform,
+  PropKind,
+  PropSummary,
+  PropTransaction,
+  PropTransactionInput,
   Screenshot,
   SeriesPoint,
   Summary,
@@ -231,6 +235,22 @@ export const notesApi = {
   },
 
   imageUrl: (path: string) => fileUrl(LESSON_IMAGE_BUCKET, path),
+};
+
+// -------------------------------------------------------------------- Prop
+
+export const propApi = {
+  summary: () => request<PropSummary>("/prop/summary"),
+  list: (query: { firm?: string; kind?: PropKind } = {}) =>
+    request<PropTransaction[]>(`/prop/transactions${qs(query)}`),
+  create: (input: PropTransactionInput) =>
+    request<PropTransaction>("/prop/transactions", { method: "POST", body: JSON.stringify(input) }),
+  update: (id: string, input: PropTransactionInput) =>
+    request<PropTransaction>(`/prop/transactions/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  remove: (id: string) => request<void>(`/prop/transactions/${id}`, { method: "DELETE" }),
 };
 
 // ------------------------------------------------------------------ Oturum

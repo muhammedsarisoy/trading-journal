@@ -123,7 +123,7 @@ function FundsCard({
       <CardContent className="space-y-4">
         <form onSubmit={addFund} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="space-y-1.5">
-            <Label htmlFor="fundName" className="text-xs uppercase text-muted-foreground">
+            <Label htmlFor="fundName" className="text-xs text-muted-foreground">
               Hesap adı
             </Label>
             <Input
@@ -134,7 +134,7 @@ function FundsCard({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="broker" className="text-xs uppercase text-muted-foreground">
+            <Label htmlFor="broker" className="text-xs text-muted-foreground">
               Aracı kurum
             </Label>
             <Input
@@ -145,7 +145,7 @@ function FundsCard({
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs uppercase text-muted-foreground">Para birimi</Label>
+            <Label className="text-xs text-muted-foreground">Para birimi</Label>
             <Select value={currency} onValueChange={setCurrency}>
               <SelectTrigger>
                 <SelectValue />
@@ -160,7 +160,7 @@ function FundsCard({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="balance" className="text-xs uppercase text-muted-foreground">
+            <Label htmlFor="balance" className="text-xs text-muted-foreground">
               Başlangıç bakiyesi
             </Label>
             <Input

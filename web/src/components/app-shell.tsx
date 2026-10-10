@@ -2,18 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
-import {
-  BarChart3,
-  CalendarDays,
-  GraduationCap,
-  LayoutDashboard,
-  List,
-  LogOut,
-  Menu,
-  Plus,
-  Settings,
-} from "lucide-react";
+import { GraduationCap, LayoutDashboard, List, LogOut, Plus, Settings, Wallet } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,41 +13,39 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { authApi } from "@/lib/api";
 
 const NAV = [
   { href: "/dashboard", label: "Panel", icon: LayoutDashboard },
-  { href: "/calendar", label: "Takvim", icon: CalendarDays },
   { href: "/trades", label: "İşlemler", icon: List },
-  { href: "/analytics", label: "Analiz", icon: BarChart3 },
+  { href: "/prop", label: "Prop", icon: Wallet },
   { href: "/learn", label: "Eğitim", icon: GraduationCap },
-  { href: "/settings", label: "Ayarlar", icon: Settings },
 ];
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function useActive() {
   const pathname = usePathname();
+  return (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+}
 
+/** Masaüstü: başlıkta yatay sekmeler. */
+function TopNav() {
+  const isActive = useActive();
   return (
-    <nav className="flex flex-col">
-      {NAV.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href || pathname.startsWith(`${href}/`);
+    <nav aria-label="Ana menü" className="hidden items-center gap-1 md:flex">
+      {NAV.map(({ href, label }) => {
+        const active = isActive(href);
         return (
           <Link
             key={href}
             href={href}
-            onClick={onNavigate}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex items-center gap-2.5 border-l-2 py-2 pl-3 text-sm transition-colors",
+              "rounded-md px-3 py-1.5 text-sm transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              active
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:border-rule-strong hover:text-foreground",
+              active ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >
-            <Icon className="size-4" aria-hidden="true" />
             {label}
           </Link>
         );
@@ -67,7 +54,36 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-/** Şase: sabit üst şerit, ince kenar navigasyonu, geniş içerik alanı. */
+/** Mobil: başparmak erişiminde alt sekme çubuğu. */
+function BottomNav() {
+  const isActive = useActive();
+  return (
+    <nav
+      aria-label="Ana menü"
+      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+    >
+      {NAV.map(({ href, label, icon: Icon }) => {
+        const active = isActive(href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "flex flex-col items-center gap-1 py-2 text-[11px]",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              active ? "text-foreground" : "text-muted-foreground",
+            )}
+          >
+            <Icon className="size-5" aria-hidden="true" />
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 export function AppShell({
   children,
   userEmail,
@@ -78,7 +94,6 @@ export function AppShell({
   displayName: string;
 }) {
   const router = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   async function signOut() {
     try {
@@ -90,70 +105,70 @@ export function AppShell({
     router.refresh();
   }
 
+  const initial = (displayName.trim()[0] ?? "?").toLocaleUpperCase("tr");
+
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-40 flex h-12 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur">
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden" aria-label="Menüyü aç">
-              <Menu className="size-4" aria-hidden="true" />
+      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-6 px-4 md:px-8">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 text-sm font-medium tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Ticks className="text-long" />
+            <span translate="no">Trading Journal</span>
+          </Link>
+
+          <TopNav />
+
+          <div className="ml-auto flex items-center gap-2">
+            <Button asChild size="sm">
+              <Link href="/trades/new">
+                <Plus className="size-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Yeni işlem</span>
+                <span className="sr-only sm:hidden">Yeni işlem</span>
+              </Link>
             </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-60 p-4">
-            <SheetTitle className="mb-4 text-sm font-medium">Trading Journal</SheetTitle>
-            <NavLinks onNavigate={() => setMobileOpen(false)} />
-          </SheetContent>
-        </Sheet>
 
-        <Link
-          href="/dashboard"
-          className="flex items-center gap-2 text-sm font-medium tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Ticks className="text-long" />
-          <span translate="no">Trading Journal</span>
-        </Link>
-
-        <div className="ml-auto flex items-center gap-1">
-          <Button asChild size="sm" variant="outline">
-            <Link href="/trades/new">
-              <Plus className="size-4" aria-hidden="true" />
-              <span className="hidden sm:inline">Yeni İşlem</span>
-            </Link>
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="num text-xs">
-                {displayName}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="font-normal">
-                <span className="block text-sm font-medium">{displayName}</span>
-                <span className="block truncate text-xs text-muted-foreground">{userEmail}</span>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/settings">
-                  <Settings className="size-4" aria-hidden="true" />
-                  Ayarlar
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={signOut}>
-                <LogOut className="size-4" aria-hidden="true" />
-                Çıkış Yap
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full bg-accent text-sm font-medium"
+                  aria-label={`Hesap menüsü: ${displayName}`}
+                >
+                  {initial}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <span className="block text-sm font-medium">{displayName}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{userEmail}</span>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/settings">
+                    <Settings className="size-4" aria-hidden="true" />
+                    Ayarlar
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={signOut}>
+                  <LogOut className="size-4" aria-hidden="true" />
+                  Çıkış yap
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </header>
 
-      <div className="flex flex-1">
-        <aside className="hidden w-48 shrink-0 border-r border-border py-4 md:block">
-          <NavLinks />
-        </aside>
-        <main className="min-w-0 flex-1 px-4 py-6 md:px-8">{children}</main>
-      </div>
+      {/* Mobilde alt menü içeriğin üstüne binmesin. */}
+      <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 pb-24 md:px-8 md:py-8 md:pb-10">
+        {children}
+      </main>
+
+      <BottomNav />
     </div>
   );
 }

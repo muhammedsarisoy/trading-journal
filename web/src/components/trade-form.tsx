@@ -1,17 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save } from "lucide-react";
+import { ChevronRight, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -138,8 +136,7 @@ export function TradeForm({
   // Sunucudaki coalesce sırasıyla aynı mantık.
   const effectivePnl =
     pnlValue ?? (rValue !== null && riskValue !== null ? rValue * riskValue : null);
-  const effectiveR =
-    rValue ?? (pnlValue !== null && riskValue ? pnlValue / riskValue : null);
+  const effectiveR = rValue ?? (pnlValue !== null && riskValue ? pnlValue / riskValue : null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -211,23 +208,42 @@ export function TradeForm({
     }
   }
 
+  // Düzenlemede içi dolu bölümler açık gelir; yeni işlemde hepsi kapalı.
+  const has = {
+    details:
+      Boolean(trade) &&
+      (form.assetClass !== "forex" ||
+        Boolean(form.timeframe) ||
+        Boolean(form.stopLoss) ||
+        Boolean(form.takeProfit)),
+    reason: Boolean(form.setup || form.reason || form.tags.length || form.confluences.length),
+    psych: Boolean(
+      form.emotionBefore !== NONE ||
+      form.emotionAfter !== NONE ||
+      form.confidence !== NONE ||
+      form.stress !== NONE ||
+      form.followedPlan !== null ||
+      form.mistakes.length ||
+      form.lesson,
+    ),
+    notes: Boolean(form.notes) || pending.length > 0,
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {/* ------------------------------------------------------- İşlem */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">İşlem</CardTitle>
-          <CardDescription>Ne aldın, hangi hesaptan.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <form onSubmit={handleSubmit} className="space-y-8">
+      {/* ------------------------------------------- hızlı giriş */}
+      <section className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr]">
           <Field label="Sembol" htmlFor="symbol" required>
             <Input
               id="symbol"
               required
+              autoFocus={!trade}
               value={form.symbol}
               onChange={(e) => set("symbol", e.target.value)}
-              placeholder="EURUSD, BTCUSDT, THYAO"
+              placeholder="XAUUSD"
               className="uppercase"
+              autoComplete="off"
             />
           </Field>
 
@@ -237,7 +253,7 @@ export function TradeForm({
               variant="outline"
               value={form.direction}
               onValueChange={(v) => v && set("direction", v as Direction)}
-              className="w-full"
+              className="w-full sm:w-44"
             >
               {DIRECTIONS.map((d) => (
                 <ToggleGroupItem
@@ -255,7 +271,7 @@ export function TradeForm({
             </ToggleGroup>
           </Field>
 
-          <Field label="İşlem tarihi" required>
+          <Field label="Tarih" required>
             <Input
               type="datetime-local"
               required
@@ -263,8 +279,10 @@ export function TradeForm({
               onChange={(e) => set("openedAt", e.target.value)}
             />
           </Field>
+        </div>
 
-          <Field label="Fon / hesap" hint={`Para birimi: ${currency}`}>
+        <div className="grid gap-4 sm:grid-cols-4">
+          <Field label="Hesap" hint={currency}>
             <Select value={form.fundId} onValueChange={(v) => set("fundId", v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Seç" />
@@ -280,145 +298,137 @@ export function TradeForm({
             </Select>
           </Field>
 
-          <Field label="Enstrüman sınıfı">
-            <Select
-              value={form.assetClass}
-              onValueChange={(v) => set("assetClass", v as AssetClass)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ASSET_CLASSES.map((a) => (
-                  <SelectItem key={a.value} value={a.value}>
-                    {a.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Field label={`Risk (${currencySymbol(currency)})`} hint="1R kaç para">
+            <Input
+              inputMode="decimal"
+              value={form.risk}
+              onChange={(e) => set("risk", e.target.value)}
+              placeholder="100"
+              className="num"
+            />
           </Field>
 
-          <Field label="Zaman dilimi">
-            <Select
-              value={form.timeframe || NONE}
-              onValueChange={(v) => set("timeframe", v === NONE ? "" : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Seç" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE}>Belirtilmedi</SelectItem>
-                {TIMEFRAMES.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Field label="R" hint="Zarar için eksi">
+            <Input
+              inputMode="decimal"
+              value={form.rGain}
+              onChange={(e) => set("rGain", e.target.value)}
+              placeholder="2,5"
+              className="num"
+            />
           </Field>
-        </CardContent>
-      </Card>
 
-      {/* ------------------------------------------------------ Sonuç */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Sonuç</CardTitle>
-          <CardDescription>
-            Riski gir, sonra <strong>R</strong> ya da <strong>net tutar</strong>dan birini —
-            diğeri hesaplanır. İkisi de boşsa işlem açık sayılır ve raporlara girmez.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field
-              label={`Riske ettiğim tutar (${currencySymbol(currency)})`}
-              hint="1R kaç para ediyor"
-            >
-              <Input
-                inputMode="decimal"
-                value={form.risk}
-                onChange={(e) => set("risk", e.target.value)}
-                placeholder="100"
-              />
+          <Field label={`ya da net K/Z (${currencySymbol(currency)})`} hint="Boşsa R × risk">
+            <Input
+              inputMode="decimal"
+              value={form.pnl}
+              onChange={(e) => set("pnl", e.target.value)}
+              placeholder="-50"
+              className="num"
+            />
+          </Field>
+        </div>
+
+        {/* Kaydedilecek sonuç, yazarken görünür. */}
+        <p
+          className="flex flex-wrap items-baseline gap-x-3 text-sm text-muted-foreground"
+          aria-live="polite"
+        >
+          {effectivePnl === null ? (
+            "R ya da net tutar boşsa işlem açık kaydedilir."
+          ) : (
+            <>
+              Kaydedilecek:
+              <span className={cn("num text-base font-medium", pnlTone(effectivePnl))}>
+                {money(effectivePnl, currency, { signed: true })}
+              </span>
+              {effectiveR !== null && (
+                <span className={cn("num", pnlTone(effectiveR))}>
+                  {`${effectiveR > 0 ? "+" : ""}${effectiveR.toFixed(2)}R`}
+                </span>
+              )}
+            </>
+          )}
+        </p>
+      </section>
+
+      {/* ------------------------------------------- açılır bölümler */}
+      <div className="rule-y border-y border-border">
+        <Disclosure
+          title="Ayrıntılar"
+          summary="Enstrüman, zaman dilimi, stop ve hedef"
+          defaultOpen={has.details}
+        >
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Enstrüman sınıfı">
+              <Select
+                value={form.assetClass}
+                onValueChange={(v) => set("assetClass", v as AssetClass)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ASSET_CLASSES.map((a) => (
+                    <SelectItem key={a.value} value={a.value}>
+                      {a.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
 
-            <Field label="Kazandığım R" hint="Zarar için eksi: -1, -0,5">
-              <Input
-                inputMode="decimal"
-                value={form.rGain}
-                onChange={(e) => set("rGain", e.target.value)}
-                placeholder="2,5"
-              />
+            <Field label="Zaman dilimi">
+              <Select
+                value={form.timeframe || NONE}
+                onValueChange={(v) => set("timeframe", v === NONE ? "" : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seç" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Belirtilmedi</SelectItem>
+                  {TIMEFRAMES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
 
-            <Field
-              label={`Net kâr / zarar (${currencySymbol(currency)})`}
-              hint="Boşsa R × riskten hesaplanır"
-            >
-              <Input
-                inputMode="decimal"
-                value={form.pnl}
-                onChange={(e) => set("pnl", e.target.value)}
-                placeholder="-250 veya 480"
-              />
-            </Field>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Stop loss" hint="Sadece kayıt">
+            <Field label="Stop loss">
               <Input
                 inputMode="decimal"
                 value={form.stopLoss}
                 onChange={(e) => set("stopLoss", e.target.value)}
+                className="num"
               />
             </Field>
 
-            <Field label="Take profit" hint="Sadece kayıt">
+            <Field label="Take profit">
               <Input
                 inputMode="decimal"
                 value={form.takeProfit}
                 onChange={(e) => set("takeProfit", e.target.value)}
+                className="num"
               />
             </Field>
           </div>
+        </Disclosure>
 
-          <Separator />
-
-          <div className="flex flex-wrap gap-8 text-sm">
-            <div>
-              <div className="text-xs uppercase text-muted-foreground">Kaydedilecek sonuç</div>
-              <div className={cn("num text-lg font-semibold", pnlTone(effectivePnl))}>
-                {effectivePnl === null
-                  ? "Açık işlem"
-                  : money(effectivePnl, currency, { signed: true })}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs uppercase text-muted-foreground">R katsayısı</div>
-              <div className={cn("num text-lg font-semibold", pnlTone(effectiveR))}>
-                {effectiveR === null
-                  ? "—"
-                  : `${effectiveR > 0 ? "+" : ""}${effectiveR.toFixed(2)}R`}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ---------------------------------------------------- Gerekçe */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Karar gerekçesi</CardTitle>
-          <CardDescription>Neye göre aldın, nelere baktın.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        <Disclosure
+          title="Strateji ve gerekçe"
+          summary="Neye göre aldın, nelere baktın"
+          defaultOpen={has.reason}
+        >
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Strateji / setup">
+            <Field label="Strateji">
               <Input
                 list="setup-suggestions"
                 value={form.setup}
                 onChange={(e) => set("setup", e.target.value)}
-                placeholder="Kırılım, pullback, seans açılışı..."
+                placeholder="Kırılım, pullback, seans açılışı…"
               />
               <datalist id="setup-suggestions">
                 {[...new Set([...setupSuggestions, ...SETUP_SUGGESTIONS])].map((s) => (
@@ -435,16 +445,16 @@ export function TradeForm({
             </Field>
           </div>
 
-          <Field label="Giriş gerekçesi" hint="Neden bu işlemi açtın">
+          <Field label="Giriş gerekçesi">
             <Textarea
               rows={3}
               value={form.reason}
               onChange={(e) => set("reason", e.target.value)}
-              placeholder="4H trend yukarı, günlük desteğe geri çekilme, hacim teyidi..."
+              placeholder="4H trend yukarı, günlük desteğe geri çekilme, hacim teyidi…"
             />
           </Field>
 
-          <Field label="Nelere baktım" hint="Girişi destekleyen teyitler">
+          <Field label="Nelere baktım">
             <TagInput
               value={form.confluences}
               onChange={(v) => set("confluences", v)}
@@ -452,16 +462,13 @@ export function TradeForm({
               placeholder="Teyit ekle"
             />
           </Field>
-        </CardContent>
-      </Card>
+        </Disclosure>
 
-      {/* --------------------------------------------------- Psikoloji */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Psikoloji</CardTitle>
-          <CardDescription>İşlem anındaki ruh halin ve sonrası.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        <Disclosure
+          title="Psikoloji"
+          summary="Duygu, güven, stres, hatalar"
+          defaultOpen={has.psych}
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="İşlem öncesi duygu">
               <EmotionSelect value={form.emotionBefore} onChange={(v) => set("emotionBefore", v)} />
@@ -469,18 +476,15 @@ export function TradeForm({
             <Field label="İşlem sonrası duygu">
               <EmotionSelect value={form.emotionAfter} onChange={(v) => set("emotionAfter", v)} />
             </Field>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Güven düzeyi" hint="1 = çok düşük, 5 = çok yüksek">
+            <Field label="Güven" hint="1 düşük · 5 yüksek">
               <RatingInput value={form.confidence} onChange={(v) => set("confidence", v)} />
             </Field>
-            <Field label="Stres düzeyi" hint="1 = sakin, 5 = çok stresli">
+            <Field label="Stres" hint="1 sakin · 5 çok stresli">
               <RatingInput value={form.stress} onChange={(v) => set("stress", v)} />
             </Field>
           </div>
 
-          <div className="flex items-center gap-3 rounded-md border p-3">
+          <div className="flex items-center gap-3">
             <Switch
               id="followedPlan"
               checked={form.followedPlan === true}
@@ -512,28 +516,37 @@ export function TradeForm({
             />
           </Field>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Çıkarılan ders">
-              <Textarea
-                rows={3}
-                value={form.lesson}
-                onChange={(e) => set("lesson", e.target.value)}
-                placeholder="Bir dahakine ne yapacağım"
-              />
-            </Field>
-            <Field label="Notlar">
-              <Textarea
-                rows={3}
-                value={form.notes}
-                onChange={(e) => set("notes", e.target.value)}
-                placeholder="Serbest not"
-              />
-            </Field>
-          </div>
-        </CardContent>
-      </Card>
+          <Field label="Çıkarılan ders">
+            <Textarea
+              rows={2}
+              value={form.lesson}
+              onChange={(e) => set("lesson", e.target.value)}
+              placeholder="Bir dahakine ne yapacağım"
+            />
+          </Field>
+        </Disclosure>
 
-      <ScreenshotManager tradeId={trade?.id} pending={pending} onPendingChange={setPending} />
+        <Disclosure
+          title="Notlar ve ekran görüntüleri"
+          summary="Serbest not, grafik görselleri"
+          defaultOpen={has.notes}
+        >
+          <Field label="Notlar">
+            <Textarea
+              rows={3}
+              value={form.notes}
+              onChange={(e) => set("notes", e.target.value)}
+              placeholder="Serbest not"
+            />
+          </Field>
+          <ScreenshotManager
+            bare
+            tradeId={trade?.id}
+            pending={pending}
+            onPendingChange={setPending}
+          />
+        </Disclosure>
+      </div>
 
       <div className="flex items-center justify-end gap-2 pb-6">
         <Button type="button" variant="ghost" onClick={() => router.back()}>
@@ -545,6 +558,50 @@ export function TradeForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Başlığına tıklanınca açılan bölüm. Kapalıyken içerik DOM'da kalır ama
+ * gizlidir: alanlardaki değerler ve görsel yüklemesi kaybolmaz.
+ */
+function Disclosure({
+  title,
+  summary,
+  defaultOpen,
+  children,
+}: {
+  title: string;
+  summary: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(Boolean(defaultOpen));
+  const id = useId();
+
+  return (
+    <section>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-3 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ChevronRight
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-90",
+          )}
+          aria-hidden="true"
+        />
+        <span className="text-sm font-medium">{title}</span>
+        {!open && <span className="truncate text-xs text-muted-foreground">{summary}</span>}
+      </button>
+      <div id={id} hidden={!open} className="space-y-4 pb-6 pl-7">
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -563,7 +620,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={htmlFor} className="text-xs uppercase tracking-wide text-muted-foreground">
+      <Label htmlFor={htmlFor} className="text-xs text-muted-foreground">
         {label}
         {required && <span className="text-loss"> *</span>}
       </Label>

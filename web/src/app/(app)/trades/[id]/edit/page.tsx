@@ -40,13 +40,8 @@ export default function EditTradePage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">{trade.symbol} · düzenle</h1>
-        <p className="text-sm text-muted-foreground">
-          Kaydı güncelle; hesaplanan değerler yeniden türetilir.
-        </p>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <h1 className="text-xl font-medium">{trade.symbol} düzenle</h1>
 
       <TradeForm trade={trade} funds={funds} setupSuggestions={distinct.setup} />
     </div>

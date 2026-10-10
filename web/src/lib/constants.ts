@@ -4,6 +4,7 @@ import type {
   BreakdownDim,
   Direction,
   Phase,
+  PropKind,
   QuantityUnit,
 } from "@/lib/types";
 
@@ -199,3 +200,15 @@ export const LESSON_IMAGE_BUCKET = "lesson-images";
 
 /** Ders notlarına eklenen grafik görselleri. */
 export const MAX_LESSON_IMAGE_BYTES = 10 * 1024 * 1024;
+
+/** Prop sayfasındaki hazır firmalar — hazır hesap listesindeki prop'lardan. */
+export const PROP_FIRMS = DEFAULT_FUNDS.filter((f) => f.is_prop).map((f) => f.name);
+
+export const PROP_KIND_LABELS: Record<PropKind, string> = {
+  fee: "Challenge ücreti",
+  payout: "Payout",
+  refund: "İade",
+};
+
+/** Challenge'larda yaygın hesap büyüklükleri. */
+export const ACCOUNT_SIZES = [5_000, 10_000, 25_000, 50_000, 100_000, 200_000];
