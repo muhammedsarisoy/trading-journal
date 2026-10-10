@@ -106,7 +106,7 @@ func TestPropValidation(t *testing.T) {
 		"eksi tutar":             {"kind": "payout", "firm": "X", "amount": -5},
 		"kuruştan küçük":         {"kind": "fee", "firm": "X", "amount": 0.001},
 		"bozuk tarih":            {"kind": "fee", "firm": "X", "amount": 1, "occurred_on": "10.09.2026"},
-		"bozuk para birimi":      {"kind": "fee", "firm": "X", "amount": 1, "currency": "DOLAR"},
+		"bozuk para birimi":      {"kind": "fee", "firm": "X", "amount": 1, "currency": "US$"},
 		"eksi hesap boyutu":      {"kind": "fee", "firm": "X", "amount": 1, "account_size": -1},
 		"geçersiz hesap kimliği": {"kind": "fee", "firm": "X", "amount": 1, "fund_id": "abc"},
 	}
@@ -122,6 +122,9 @@ func TestPropValidation(t *testing.T) {
 	r := c.do("POST", "/api/v1/prop/transactions", map[string]any{"kind": "fee", "firm": "X", "amount": 1, "currency": "eur"})
 	if r.status != 201 || r.json(t)["currency"] != "EUR" || r.json(t)["occurred_on"] == "" {
 		t.Fatalf("%d %s", r.status, r.body)
+	}
+	if r := c.do("POST", "/api/v1/prop/transactions", map[string]any{"kind": "fee", "firm": "X", "amount": 1, "currency": "usdt"}); r.status != 201 {
+		t.Fatalf("USDT reddedildi: %d %s", r.status, r.body)
 	}
 	if r := c.do("POST", "/api/v1/prop/transactions", ok); r.status != 201 {
 		t.Fatalf("geçerli kayıt %d", r.status)

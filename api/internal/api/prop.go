@@ -18,6 +18,9 @@ import (
 
 // ------------------------------------------------------- Prop harcamaları
 
+// Uygulamanın para birimi listesinde USDT gibi 4 harfli kodlar da var.
+var currencyRe = regexp.MustCompile("^[A-Z]{3,5}$")
+
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 func validateProp(in *model.PropTransactionInput) error {
@@ -42,8 +45,8 @@ func validateProp(in *model.PropTransactionInput) error {
 	if in.Currency == "" {
 		in.Currency = "USD"
 	}
-	if len(in.Currency) != 3 {
-		return httpx.BadRequest("Para birimi üç harfli olmalı (USD gibi)", nil)
+	if !currencyRe.MatchString(in.Currency) {
+		return httpx.BadRequest("Para birimi 3–5 harfli bir kod olmalı (USD, USDT gibi)", nil)
 	}
 
 	in.OccurredOn = strings.TrimSpace(in.OccurredOn)
