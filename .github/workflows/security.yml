@@ -55,8 +55,23 @@ jobs:
           [ "$fail" = 0 ] && echo "Temiz." || exit 1
 
   go:
-    name: Go — açık taraması ve derleme
+    name: Go — açık taraması, derleme ve testler
     runs-on: ubuntu-latest
+    # Entegrasyon testleri her test için bu sunucuda geçici bir veritabanı açar.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: journal
+          POSTGRES_PASSWORD: journal
+          POSTGRES_DB: trading_journal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U journal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: api
@@ -81,6 +96,11 @@ jobs:
         run: |
           out=$(gofmt -l .)
           if [ -n "$out" ]; then echo "gofmt gerekiyor:"; echo "$out"; exit 1; fi
+
+      - name: Testler (birim + Postgres entegrasyon)
+        env:
+          TEST_DATABASE_URL: postgres://journal:journal@localhost:5432/trading_journal?sslmode=disable
+        run: go test -count=1 ./...
 
       - name: govulncheck
         run: |
@@ -111,6 +131,9 @@ jobs:
       - name: Tip denetimi
         run: npx tsc --noEmit
 
+      - name: Testler
+        run: npm test
+
       - name: Derle
         run: npm run build
 
@@ -137,3 +160,6 @@ jobs:
           out=$(docker run --rm -e DATABASE_URL=postgres://u:p@127.0.0.1:1/x tj-api:ci 2>&1 || true)
           echo "$out"
           echo "$out" | grep -q "veritabanı" || { echo "beklenmeyen çıktı"; exit 1; }
+
+      - name: Sistem testi (tüm yığın, web üzerinden)
+        run: ./scripts/e2e.sh

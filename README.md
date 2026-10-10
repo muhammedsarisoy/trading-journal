@@ -184,6 +184,30 @@ Haftalık cron önemli: kod değişmese de yeni açıklanan CVE'ler yakalanır.
 - **Dependabot alerts + security updates** — açık kapatan sürüm çıkınca otomatik PR
 - `.github/dependabot.yml` haftalık olarak Go, npm, Docker ve Actions bağımlılıklarını tarar
 
+## Testler
+
+```bash
+docker compose -f docker-compose.dev.yml up -d    # testlerin kullanacağı Postgres
+
+cd api
+TEST_DATABASE_URL='postgres://journal:journal@localhost:5432/trading_journal?sslmode=disable' \
+  go test ./...          # birim + entegrasyon (her test kendi geçici veritabanını açar)
+go test ./...            # TEST_DATABASE_URL yoksa yalnız birim testler; DB testleri atlanır
+
+cd web && npm test       # API aktarıcısı, proxy, istemci, oturum yardımcıları
+
+./scripts/e2e.sh         # sistem testi: docker-compose.yml yığınını kurar, web üzerinden dener
+```
+
+| Katman | Ne sınanıyor |
+|---|---|
+| Go birim | dosya türü tespiti, 10 MB sınırı, yol kaçışı; bcrypt (Supabase hash'i dahil); Origin/CSRF; config doğrulama |
+| Go entegrasyon | kayıt/giriş/çıkış, oturum süresi ve yenileme, e-posta başına hız sınırı, kullanıcılar arası izolasyon, yükleme ve disk temizliği, Google akışı (sahte sunucuyla, PKCE dahil), şema idempotentliği ve Supabase koruması, `import-supabase` (sahte kaynak + sahte Storage) |
+| Web | `/api` aktarıcısının başlıkları, akışı, Set-Cookie ve yönlendirmeleri; `proxy.ts` yönlendirmeleri ve matcher; istemcinin multipart ve hata davranışı |
+| Sistem | gerçek imajlar: sayfalar, hesap, işlem, görsel, izolasyon, yeniden başlatmada kalıcılık, silme |
+
+CI'da hepsi her push'ta çalışır (`.github/workflows/security.yml`).
+
 ## Bakım araçları
 
 `api/.env` içindeki `DATABASE_URL` kullanılır.

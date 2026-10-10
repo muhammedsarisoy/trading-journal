@@ -17,7 +17,8 @@ const googleUserInfoURL = "https://openidconnect.googleapis.com/v1/userinfo"
 
 // Google, "Google ile devam et" akışını yürütür (yetkilendirme kodu + PKCE).
 type Google struct {
-	cfg *oauth2.Config
+	cfg         *oauth2.Config
+	userInfoURL string
 }
 
 // NewGoogle, istemci kimliği ve sırrı verilmemişse nil döner; o durumda
@@ -32,7 +33,15 @@ func NewGoogle(clientID, clientSecret, redirectURL string) *Google {
 		RedirectURL:  redirectURL,
 		Endpoint:     endpoints.Google,
 		Scopes:       []string{"openid", "email", "profile"},
-	}}
+	}, userInfoURL: googleUserInfoURL}
+}
+
+// WithEndpoints, Google yerine verilen adresleri kullanır. Testlerde sahte
+// bir yetkilendirme sunucusuna bağlanmak için.
+func (g *Google) WithEndpoints(authURL, tokenURL, userInfoURL string) *Google {
+	g.cfg.Endpoint = oauth2.Endpoint{AuthURL: authURL, TokenURL: tokenURL, AuthStyle: oauth2.AuthStyleInParams}
+	g.userInfoURL = userInfoURL
+	return g
 }
 
 // GoogleUser, userinfo ucundan dönen alanların ihtiyaç duyulanları.
@@ -64,7 +73,7 @@ func (g *Google) Exchange(ctx context.Context, code, verifier string) (*GoogleUs
 		return nil, fmt.Errorf("google kodu çevrilemedi: %w", err)
 	}
 
-	resp, err := g.cfg.Client(ctx, tok).Get(googleUserInfoURL)
+	resp, err := g.cfg.Client(ctx, tok).Get(g.userInfoURL)
 	if err != nil {
 		return nil, fmt.Errorf("google kullanıcı bilgisi alınamadı: %w", err)
 	}
