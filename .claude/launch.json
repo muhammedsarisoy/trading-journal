@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "web", "run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "go",
+      "runtimeArgs": ["-C", "api", "run", "./cmd/server"],
+      "port": 8080
     }
   ]
 }

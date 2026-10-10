@@ -1,4 +1,3 @@
-import { supabaseBrowser } from "@/lib/supabase/client";
 import {
   LESSON_IMAGE_BUCKET,
   MAX_LESSON_IMAGE_BYTES,
@@ -28,7 +27,12 @@ import type {
   TradeQuery,
 } from "@/lib/types";
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080").replace(/\/$/, "");
+/**
+ * API aynı origin'de, /api altında: istekler Next üzerinden Go API'ye
+ * aktarılır (bkz. app/api/[...path]/route.ts). Oturum HttpOnly çerezde
+ * durduğu için jeton taşımaya gerek yok; tarayıcı çerezi kendisi ekler.
+ */
+const API_BASE = "/api/v1";
 
 export class ApiError extends Error {
   status: number;
@@ -39,24 +43,18 @@ export class ApiError extends Error {
   }
 }
 
-async function accessToken() {
-  const {
-    data: { session },
-  } = await supabaseBrowser().auth.getSession();
-  if (!session) throw new ApiError("Oturum bulunamadı", 401);
-  return session.access_token;
-}
-
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = await accessToken();
+  // FormData gövdesinde sınır (boundary) değerini tarayıcı yazar; elle
+  // Content-Type verilirse yükleme bozulur.
+  const isForm = init.body instanceof FormData;
 
-  const res = await fetch(`${API_URL}/api/v1${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      ...(isForm ? {} : { "Content-Type": "application/json" }),
       ...(init.headers ?? {}),
     },
+    credentials: "same-origin",
     cache: "no-store",
   });
 
@@ -86,9 +84,9 @@ function qs(params: Record<string, unknown>) {
 // ------------------------------------------------------------------ Fonlar
 
 export const fundsApi = {
-  list: () => request<Fund[]>("/funds/"),
+  list: () => request<Fund[]>("/funds"),
   create: (input: FundInput) =>
-    request<Fund>("/funds/", { method: "POST", body: JSON.stringify(input) }),
+    request<Fund>("/funds", { method: "POST", body: JSON.stringify(input) }),
   update: (id: string, input: FundInput) =>
     request<Fund>(`/funds/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   seed: (funds: Partial<FundInput>[]) =>
@@ -99,9 +97,9 @@ export const fundsApi = {
 // ------------------------------------------------------------- Platformlar
 
 export const platformsApi = {
-  list: () => request<Platform[]>("/platforms/"),
+  list: () => request<Platform[]>("/platforms"),
   create: (name: string) =>
-    request<Platform>("/platforms/", { method: "POST", body: JSON.stringify({ name }) }),
+    request<Platform>("/platforms", { method: "POST", body: JSON.stringify({ name }) }),
   seed: (names: string[]) =>
     request<Platform[]>("/platforms/seed", { method: "POST", body: JSON.stringify({ names }) }),
   remove: (id: string) => request<void>(`/platforms/${id}`, { method: "DELETE" }),
@@ -110,10 +108,10 @@ export const platformsApi = {
 // ---------------------------------------------------------------- İşlemler
 
 export const tradesApi = {
-  list: (query: TradeQuery = {}) => request<TradeList>(`/trades/${qs({ ...query })}`),
+  list: (query: TradeQuery = {}) => request<TradeList>(`/trades${qs({ ...query })}`),
   get: (id: string) => request<Trade>(`/trades/${id}`),
   create: (input: TradeInput) =>
-    request<Trade>("/trades/", { method: "POST", body: JSON.stringify(input) }),
+    request<Trade>("/trades", { method: "POST", body: JSON.stringify(input) }),
   update: (id: string, input: TradeInput) =>
     request<Trade>(`/trades/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   remove: (id: string) =>
@@ -137,8 +135,8 @@ export const screenshotsApi = {
   list: (tradeId: string) => request<Screenshot[]>(`/trades/${tradeId}/screenshots`),
 
   /**
-   * Dosya doğrudan Supabase Storage'a yüklenir (RLS klasör politikası uygular),
-   * ardından yolu Go API'ye kaydedilir.
+   * Dosya API'ye yüklenir; API türünü baytlardan doğrular, diske yazar ve
+   * kaydı açar. phase ve caption dosyadan önce gönderilir.
    */
   async upload(
     tradeId: string,
@@ -148,70 +146,37 @@ export const screenshotsApi = {
     if (file.size > MAX_SCREENSHOT_BYTES) {
       throw new ApiError("Dosya 10 MB sınırını aşıyor", 413);
     }
-
-    const supabase = supabaseBrowser();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new ApiError("Oturum bulunamadı", 401);
-
-    const ext = (file.name.split(".").pop() || "png").toLowerCase();
-    const path = `${user.id}/${tradeId}/${crypto.randomUUID()}.${ext}`;
-
-    const { error } = await supabase.storage
-      .from(SCREENSHOT_BUCKET)
-      .upload(path, file, { contentType: file.type, upsert: false });
-    if (error) throw new ApiError(`Yükleme başarısız: ${error.message}`, 500);
-
-    try {
-      return await request<Screenshot>(`/trades/${tradeId}/screenshots`, {
-        method: "POST",
-        body: JSON.stringify({ path, phase: opts.phase ?? "entry", caption: opts.caption ?? null }),
-      });
-    } catch (err) {
-      // Kayıt açılamadıysa yüklenen dosyayı geride bırakma.
-      await supabase.storage.from(SCREENSHOT_BUCKET).remove([path]);
-      throw err;
-    }
+    const form = new FormData();
+    form.append("phase", opts.phase ?? "entry");
+    if (opts.caption) form.append("caption", opts.caption);
+    form.append("file", file);
+    return request<Screenshot>(`/trades/${tradeId}/screenshots`, { method: "POST", body: form });
   },
 
-  async remove(shot: Screenshot) {
-    await request<{ removed_path: string }>(`/screenshots/${shot.id}`, { method: "DELETE" });
-    await supabaseBrowser().storage.from(SCREENSHOT_BUCKET).remove([shot.path]);
-  },
+  /** Kayıt silinince dosyayı da API kaldırır. */
+  remove: (shot: Screenshot) =>
+    request<{ removed_path: string }>(`/screenshots/${shot.id}`, { method: "DELETE" }),
 
-  /** Özel bucket olduğu için görüntüleme imzalı bağlantı ister. */
-  async signedUrl(path: string, expiresIn = 3600) {
-    const { data, error } = await supabaseBrowser()
-      .storage.from(SCREENSHOT_BUCKET)
-      .createSignedUrl(path, expiresIn);
-    if (error) throw new ApiError(error.message, 500);
-    return data.signedUrl;
-  },
+  /** Görsel adresi. Oturum çerezi aynı origin'e gittiği için imza gerekmez. */
+  url: (path: string) => fileUrl(SCREENSHOT_BUCKET, path),
 };
 
-/** İşlem silindiğinde Storage'ta kalan dosyaları temizler. */
-export async function removeStoragePaths(paths: string[]) {
-  if (!paths.length) return;
-  await supabaseBrowser().storage.from(SCREENSHOT_BUCKET).remove(paths);
+function fileUrl(bucket: string, path: string) {
+  return `${API_BASE}/files/${bucket}/${path.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 // ------------------------------------------------------------------ Eğitim
 
 export const coursesApi = {
-  list: () => request<Course[]>("/courses/"),
+  list: () => request<Course[]>("/courses"),
   get: (id: string) => request<Course>(`/courses/${id}`),
   create: (input: CourseInput) =>
-    request<Course>("/courses/", { method: "POST", body: JSON.stringify(input) }),
+    request<Course>("/courses", { method: "POST", body: JSON.stringify(input) }),
   update: (id: string, input: CourseInput) =>
     request<Course>(`/courses/${id}`, { method: "PUT", body: JSON.stringify(input) }),
-  /** Eğitimle birlikte günleri ve notları da gider; görseller Storage'tan silinir. */
-  async remove(id: string) {
-    const { removed_paths } = await request<{ removed_paths: string[] }>(`/courses/${id}`, {
-      method: "DELETE",
-    });
-    await removeLessonImages(removed_paths);
-  },
+  /** Eğitimle birlikte günleri, notları ve görselleri de gider. */
+  remove: (id: string) =>
+    request<{ removed_paths: string[] }>(`/courses/${id}`, { method: "DELETE" }),
 };
 
 export const lessonsApi = {
@@ -224,12 +189,8 @@ export const lessonsApi = {
     }),
   update: (id: string, input: LessonInput) =>
     request<Lesson>(`/lessons/${id}`, { method: "PUT", body: JSON.stringify(input) }),
-  async remove(id: string) {
-    const { removed_paths } = await request<{ removed_paths: string[] }>(`/lessons/${id}`, {
-      method: "DELETE",
-    });
-    await removeLessonImages(removed_paths);
-  },
+  remove: (id: string) =>
+    request<{ removed_paths: string[] }>(`/lessons/${id}`, { method: "DELETE" }),
 };
 
 export const notesApi = {
@@ -239,16 +200,12 @@ export const notesApi = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  /** Görsel değiştiyse ya da kaldırıldıysa eskisini API siler. */
   update: (id: string, input: LessonNoteInput) =>
     request<LessonNote>(`/notes/${id}`, { method: "PUT", body: JSON.stringify(input) }),
 
-  /** Blok silinince görseli de Storage'tan kaldırılır. */
-  async remove(id: string) {
-    const { removed_path } = await request<{ removed_path: string }>(`/notes/${id}`, {
-      method: "DELETE",
-    });
-    if (removed_path) await removeLessonImages([removed_path]);
-  },
+  /** Blok silinince görseli de API kaldırır. */
+  remove: (id: string) => request<{ removed_path: string }>(`/notes/${id}`, { method: "DELETE" }),
 
   reorder: (lessonId: string, ids: string[]) =>
     request<LessonNote[]>(`/lessons/${lessonId}/notes/reorder`, {
@@ -256,7 +213,7 @@ export const notesApi = {
       body: JSON.stringify({ ids }),
     }),
 
-  /** Grafik görseli doğrudan Storage'a yüklenir; not bloğu yalnız yolu tutar. */
+  /** Grafik görseli API'ye yüklenir; not bloğu yalnız dönen yolu tutar. */
   async uploadImage(lessonId: string, file: File): Promise<string> {
     if (!file.type.startsWith("image/")) {
       throw new ApiError("Yalnız görsel yüklenebilir", 415);
@@ -264,36 +221,34 @@ export const notesApi = {
     if (file.size > MAX_LESSON_IMAGE_BYTES) {
       throw new ApiError("Dosya 10 MB sınırını aşıyor", 413);
     }
-
-    const supabase = supabaseBrowser();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new ApiError("Oturum bulunamadı", 401);
-
-    const ext = (file.name.split(".").pop() || "png").toLowerCase();
-    const path = `${user.id}/${lessonId}/${crypto.randomUUID()}.${ext}`;
-
-    const { error } = await supabase.storage
-      .from(LESSON_IMAGE_BUCKET)
-      .upload(path, file, { contentType: file.type, upsert: false });
-    if (error) throw new ApiError(`Yükleme başarısız: ${error.message}`, 500);
-
+    const form = new FormData();
+    form.append("file", file);
+    const { path } = await request<{ path: string }>(`/lessons/${lessonId}/images`, {
+      method: "POST",
+      body: form,
+    });
     return path;
   },
 
-  /** Özel bucket olduğu için görüntüleme imzalı bağlantı ister. */
-  async signedUrl(path: string, expiresIn = 3600) {
-    const { data, error } = await supabaseBrowser()
-      .storage.from(LESSON_IMAGE_BUCKET)
-      .createSignedUrl(path, expiresIn);
-    if (error) throw new ApiError(error.message, 500);
-    return data.signedUrl;
-  },
+  imageUrl: (path: string) => fileUrl(LESSON_IMAGE_BUCKET, path),
 };
 
-/** Ders görsellerini Storage'tan kaldırır. */
-export async function removeLessonImages(paths: string[]) {
-  if (!paths.length) return;
-  await supabaseBrowser().storage.from(LESSON_IMAGE_BUCKET).remove(paths);
-}
+// ------------------------------------------------------------------ Oturum
+
+export type AuthProviders = { google: boolean; signup: boolean };
+
+export const authApi = {
+  login: (email: string, password: string) =>
+    request<{ user_id: string; email: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  signup: (email: string, password: string, displayName: string) =>
+    request<{ user_id: string; email: string }>("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email, password, display_name: displayName }),
+    }),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  /** Tarayıcı bu adrese gider; API Google'a yönlendirir ve dönüşte oturumu açar. */
+  googleStartUrl: (next: string) => `${API_BASE}/auth/google/start?next=${encodeURIComponent(next)}`,
+};

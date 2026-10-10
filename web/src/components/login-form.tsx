@@ -6,7 +6,6 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -23,26 +22,25 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { authApi } from "@/lib/api";
 
 type Mode = "signin" | "signup";
 
-const ERROR_TR: Record<string, string> = {
-  "Invalid login credentials": "E-posta veya parola hatalı.",
-  "Email not confirmed": "E-posta doğrulanmamış. Gelen kutunu kontrol et.",
-  "User already registered": "Bu e-posta ile zaten bir hesap var.",
-  "Password should be at least 6 characters.": "Parola en az 6 karakter olmalı.",
-  "Invalid API key":
-    "Supabase anahtarı geçersiz. web/.env.local içindeki NEXT_PUBLIC_SUPABASE_ANON_KEY yanlış.",
-};
+/** Açık yönlendirmeyi engeller: yalnız kendi içimizde bir yol kabul edilir. */
+function safeNext(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/dashboard";
+  return value;
+}
 
-const envMissing =
-  !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-export function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
+export function LoginForm({
+  className,
+  google,
+  signupEnabled,
+  ...props
+}: React.ComponentProps<"div"> & { google: boolean; signupEnabled: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/dashboard";
+  const next = safeNext(searchParams.get("next"));
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -55,11 +53,11 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
   const isSignup = mode === "signup";
   const busy = loading || googleLoading;
 
-  // OAuth dönüşü hataysa /auth/callback bizi ?error= ile buraya yollar.
+  // Google dönüşü hataysa API bizi ?error= ile buraya yollar.
   const errorParam = searchParams.get("error");
   useEffect(() => {
     if (!errorParam) return;
-    toast.error(ERROR_TR[errorParam] ?? errorParam);
+    toast.error(errorParam);
     const params = new URLSearchParams();
     const nextParam = searchParams.get("next");
     if (nextParam) params.set("next", nextParam);
@@ -68,58 +66,28 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
   }, [errorParam, searchParams, router]);
 
   /**
-   * Google ile giriş ve kayıt aynı çağrıdır: hesap yoksa açılır, varsa girilir.
-   * Başarılıysa tarayıcı Google'a gider; bu yüzden loading geri alınmaz.
+   * Google ile giriş ve kayıt aynı akıştır: hesap yoksa açılır, varsa girilir.
+   * Tarayıcı API'ye, oradan Google'a gider; bu yüzden loading geri alınmaz.
    */
-  async function signInWithGoogle() {
-    if (envMissing) return;
+  function signInWithGoogle() {
     setGoogleLoading(true);
-
-    const { error } = await supabaseBrowser().auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-      },
-    });
-
-    if (error) {
-      toast.error(ERROR_TR[error.message] ?? error.message);
-      setGoogleLoading(false);
-    }
+    window.location.assign(authApi.googleStartUrl(next));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (envMissing) return;
     setLoading(true);
 
-    const supabase = supabaseBrowser();
     try {
       if (isSignup) {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { display_name: displayName || email.split("@")[0] } },
-        });
-        if (error) throw error;
-
-        // E-posta doğrulaması açıksa oturum gelmez; kullanıcıyı bilgilendir.
-        if (data.session) {
-          router.push(next);
-          router.refresh();
-        } else {
-          toast.success("Kayıt alındı. E-postandaki doğrulama bağlantısına tıkla.");
-          setMode("signin");
-        }
+        await authApi.signup(email, password, displayName);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        router.push(next);
-        router.refresh();
+        await authApi.login(email, password);
       }
+      router.push(next);
+      router.refresh();
     } catch (err) {
-      const raw = err instanceof Error ? err.message : "Bilinmeyen hata";
-      toast.error(ERROR_TR[raw] ?? raw);
+      toast.error(err instanceof Error ? err.message : "Bilinmeyen hata");
     } finally {
       setLoading(false);
     }
@@ -132,16 +100,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      {envMissing && (
-        <Alert variant="destructive">
-          <AlertTitle>Kurulum eksik</AlertTitle>
-          <AlertDescription>
-            <code>web/.env.local</code> içinde <code>NEXT_PUBLIC_SUPABASE_URL</code> ve{" "}
-            <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> tanımlı değil.
-          </AlertDescription>
-        </Alert>
-      )}
-
       <Card>
         <CardHeader className="text-center">
           <CardTitle className="text-xl">
@@ -157,23 +115,27 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
         <CardContent>
           <form onSubmit={handleSubmit}>
             <FieldGroup>
-              <Field>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={signInWithGoogle}
-                  disabled={busy || envMissing}
-                >
-                  {googleLoading ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <GoogleMark />
-                  )}
-                  Google ile devam et
-                </Button>
-              </Field>
+              {google && (
+                <>
+                  <Field>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={signInWithGoogle}
+                      disabled={busy}
+                    >
+                      {googleLoading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <GoogleMark />
+                      )}
+                      Google ile devam et
+                    </Button>
+                  </Field>
 
-              <FieldSeparator className="[&>span]:bg-card">ya da</FieldSeparator>
+                  <FieldSeparator className="[&>span]:bg-card">ya da</FieldSeparator>
+                </>
+              )}
 
               {isSignup && (
                 <Field>
@@ -211,10 +173,11 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                     id="password"
                     type={showPassword ? "text" : "password"}
                     required
-                    minLength={6}
+                    minLength={isSignup ? 8 : undefined /* eski hesaplarda 6 karakter olabilir */}
+                    maxLength={72}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder={isSignup ? "En az 6 karakter" : "••••••••"}
+                    placeholder={isSignup ? "En az 8 karakter" : "••••••••"}
                     autoComplete={isSignup ? "new-password" : "current-password"}
                     className="pr-10"
                   />
@@ -232,20 +195,22 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
               </Field>
 
               <Field>
-                <Button type="submit" disabled={busy || envMissing}>
+                <Button type="submit" disabled={busy}>
                   {loading && <Loader2 className="size-4 animate-spin" />}
                   {isSignup ? "Kayıt ol" : "Giriş yap"}
                 </Button>
-                <FieldDescription className="text-center">
-                  {isSignup ? "Zaten hesabın var mı?" : "Hesabın yok mu?"}{" "}
-                  <button
-                    type="button"
-                    onClick={switchMode}
-                    className="underline underline-offset-4 hover:text-foreground"
-                  >
-                    {isSignup ? "Giriş yap" : "Kayıt ol"}
-                  </button>
-                </FieldDescription>
+                {(signupEnabled || isSignup) && (
+                  <FieldDescription className="text-center">
+                    {isSignup ? "Zaten hesabın var mı?" : "Hesabın yok mu?"}{" "}
+                    <button
+                      type="button"
+                      onClick={switchMode}
+                      className="underline underline-offset-4 hover:text-foreground"
+                    >
+                      {isSignup ? "Giriş yap" : "Kayıt ol"}
+                    </button>
+                  </FieldDescription>
+                )}
               </Field>
             </FieldGroup>
           </form>

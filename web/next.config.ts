@@ -1,24 +1,8 @@
 import type { NextConfig } from "next";
 
-// Supabase oturum cookie'leri @supabase/ssr tasarımı gereği httpOnly DEĞİL —
-// tarayıcı istemcisi onları okumak zorunda. Bu yüzden bir XSS doğrudan oturum
-// çalınmasına dönüşür ve CSP tek gerçek savunma katmanı olur.
-const supabaseOrigin = (() => {
-  try {
-    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").origin;
-  } catch {
-    return "";
-  }
-})();
-
-const apiOrigin = (() => {
-  try {
-    return new URL(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080").origin;
-  } catch {
-    return "";
-  }
-})();
-
+// Oturum çerezi HttpOnly: JavaScript onu okuyamaz, bu yüzden bir XSS oturum
+// jetonunu doğrudan çalamaz. API ve görseller aynı origin'den (/api) geldiği
+// için politikada dış kaynak yok.
 const csp = [
   `default-src 'self'`,
   // Next istemci önyüklemesi satır içi script üretiyor. Bunu kaldırmak için
@@ -28,15 +12,14 @@ const csp = [
   // Yazı tipleri next/font ile derleme anında kendi sunucumuza indiriliyor.
   `font-src 'self'`,
   // blob: bekleyen ekran görüntülerinin yerel önizlemesi için.
-  `img-src 'self' data: blob: ${supabaseOrigin}`,
-  `connect-src 'self' ${supabaseOrigin} ${apiOrigin}`,
+  `img-src 'self' data: blob:`,
+  `connect-src 'self'`,
   `frame-ancestors 'none'`,
   `base-uri 'self'`,
+  // Google ile giriş /api üzerinden başlar; dış form hedefi yok.
   `form-action 'self'`,
   `object-src 'none'`,
-]
-  .filter(Boolean)
-  .join("; ");
+].join("; ");
 
 const securityHeaders = [
   // CSP önce Report-Only: tarayıcı konsolunda ihlal görünmüyorsa

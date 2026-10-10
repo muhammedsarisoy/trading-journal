@@ -11,32 +11,8 @@ FROM node:26-alpine AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# NEXT_PUBLIC_* değerleri istemci paketine gömülür, yani herkese açıktır.
-# .env dosyaları imaja kopyalanmaz (bkz. .dockerignore); değerler yalnız
-# buradan, açıkça geçer.
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-ARG NEXT_PUBLIC_API_URL=http://localhost:8080
-
-# Gizli anahtarın istemci paketine gömülmesini derlemede durdur.
-RUN set -e; \
-    if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ]; then \
-      echo "HATA: NEXT_PUBLIC_SUPABASE_URL ve NEXT_PUBLIC_SUPABASE_ANON_KEY zorunlu."; \
-      echo "      docker compose --env-file web/.env.local up -d --build"; \
-      exit 1; \
-    fi; \
-    case "$NEXT_PUBLIC_SUPABASE_ANON_KEY" in \
-      sb_secret_*|*service_role*) \
-        echo "HATA: NEXT_PUBLIC_SUPABASE_ANON_KEY gizli anahtar gibi duruyor."; \
-        echo "      Bu deger tarayiciya gonderilen pakete gomulur ve RLS'i bypass eder."; \
-        echo "      anon / publishable anahtari kullan."; \
-        exit 1 ;; \
-    esac
-
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
-    NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
-    NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-
+# İstemci paketine gömülen ayar yok: API adresi (API_INTERNAL_URL) yalnız
+# sunucuda, çalışma anında okunur. Aynı imaj her ortamda kullanılabilir.
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -49,7 +25,8 @@ WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
-    HOSTNAME=0.0.0.0
+    HOSTNAME=0.0.0.0 \
+    API_INTERNAL_URL=http://api:8080
 
 RUN addgroup -g 1001 nodejs && adduser -D -u 1001 -G nodejs nextjs
 
@@ -60,5 +37,8 @@ COPY --from=build --chown=nextjs:nodejs /app/public ./public
 
 USER nextjs
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:3000/login >/dev/null || exit 1
 
 CMD ["node", "server.js"]

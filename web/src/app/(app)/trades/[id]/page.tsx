@@ -21,7 +21,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { ScreenshotManager } from "@/components/screenshot-manager";
-import { removeStoragePaths, tradesApi } from "@/lib/api";
+import { tradesApi } from "@/lib/api";
 import { ASSET_LABELS, EMOTION_LABELS } from "@/lib/constants";
 import { dateTime, money, pnlTone, price, rMultiple } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -47,8 +47,8 @@ export default function TradeDetailPage() {
     if (!trade) return;
     setDeleting(true);
     try {
-      const { removed_paths } = await tradesApi.remove(trade.id);
-      await removeStoragePaths(removed_paths ?? []);
+      // Ekran görüntüsü dosyalarını da API siler.
+      await tradesApi.remove(trade.id);
       toast.success("İşlem silindi.");
       router.push("/trades");
       router.refresh();

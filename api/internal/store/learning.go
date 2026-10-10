@@ -295,7 +295,26 @@ func (s *Store) UpdateNote(ctx context.Context, userID, id string, in model.Less
 	return &n, nil
 }
 
-// DeleteNote, kaydı siler ve Storage temizliği için görsel yolunu döner.
+// NoteImagePath, notun şu anki görsel yolunu döner; görsel yoksa boş dize.
+// Güncellemede eski görselin diskten silinmesi için kullanılır.
+func (s *Store) NoteImagePath(ctx context.Context, userID, id string) (string, error) {
+	var path *string
+	err := s.pool.QueryRow(ctx,
+		"select image_path from public.lesson_notes where id = $1 and user_id = $2",
+		id, userID).Scan(&path)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("not okunamadı: %w", err)
+	}
+	if path == nil {
+		return "", nil
+	}
+	return *path, nil
+}
+
+// DeleteNote, kaydı siler ve disk temizliği için görsel yolunu döner.
 func (s *Store) DeleteNote(ctx context.Context, userID, id string) (string, error) {
 	var path *string
 	err := s.pool.QueryRow(ctx,

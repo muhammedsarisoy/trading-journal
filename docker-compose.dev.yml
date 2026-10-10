@@ -1,0 +1,24 @@
+# Yerel geliştirme için yalnız Postgres. API ve web doğrudan çalışır:
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#   cd api && go run ./cmd/server
+#   cd web && npm run dev
+#
+# api/.env içindeki DATABASE_URL:
+#   postgres://journal:journal@localhost:5432/trading_journal?sslmode=disable
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: trading_journal
+      POSTGRES_USER: journal
+      POSTGRES_PASSWORD: journal
+    ports:
+      # Port doluysa: DEV_DB_PORT=5433 docker compose -f docker-compose.dev.yml up -d
+      - "127.0.0.1:${DEV_DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+
+volumes:
+  pgdata-dev:

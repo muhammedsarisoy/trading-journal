@@ -10,107 +10,99 @@ Form bilerek kısa: fiyat-miktar matematiği yerine **riske ettiğin tutar** ve
 | Katman | Teknoloji |
 |---|---|
 | `web/` | Next.js 16 · React 19 · TypeScript · Tailwind v4 · shadcn/ui · Recharts |
-| `api/` | Go 1.25 · chi · pgx · Supabase JWT doğrulama |
-| `supabase/` | Postgres şeması, RLS politikaları, Storage bucket'ı |
+| `api/` | Go 1.25 · chi · pgx · oturum, Google OAuth, dosya yükleme |
+| Veritabanı | PostgreSQL 17 (şema `api/internal/db/schema.sql`, API açılışta uygular) |
 
-Akış: **Next → Supabase Auth** (giriş/JWT) · **Next → Go API** (tüm veri) ·
-**Next → Supabase Storage** (ekran görüntüleri, RLS klasör politikasıyla).
+Akış: **Tarayıcı → Next** (tek origin) · **Next `/api/*` → Go API** (iç ağ) ·
+**Go API → Postgres** ve **diskteki görseller**. Dışarıya yalnız web açılır.
+
+Harici servis yok: veriler, hesaplar ve ekran görüntüleri kendi sunucunda durur.
 
 ---
 
-## Bu repoyu kendin için kurmak
+## Sunucuya kurmak (Coolify)
 
-> Depoda **hiçbir anahtar yok**. `.env` dosyaları git dışıdır. Kendi Supabase
-> projeni açıp kendi anahtarlarını gireceksin; veriler senin projende durur.
+> Depoda **hiçbir anahtar yok**. Değerleri Coolify'ın Environment Variables
+> ekranına girersin.
 
-### Gerekenler
+1. Coolify → **New Resource → Docker Compose** → bu depo, dosya `docker-compose.yml`.
+2. **Environment Variables** (bkz. `.env.example`):
 
-**Docker ile (önerilen)** — başka bir şey kurmana gerek yok:
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+   | Değişken | Değer |
+   |---|---|
+   | `POSTGRES_PASSWORD` | yalnız harf/rakam, uzun (`openssl rand -hex 24`) |
+   | `APP_URL` | `https://journal.alanadin.com` |
+   | `ALLOW_SIGNUP` | `true` — hesabını açınca `false` yap |
+   | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | isteğe bağlı, aşağıda |
 
-**Docker'sız:**
-- [Node.js 22+](https://nodejs.org)
-- [Go 1.25+](https://go.dev/dl/)
+3. **web** servisine alan adını ver: `https://journal.alanadin.com` (port 3000).
+   `api` ve `db` servislerine alan adı **verme**; iç ağda kalmalılar.
+4. Alan adının DNS'inde (Squarespace → Domains → DNS) bir `A` kaydı:
+   `journal` → sunucunun IP'si. Sertifikayı Coolify alır.
+5. **Deploy**. Şema ilk açılışta kendiliğinden kurulur.
+6. **Yedek**: Coolify'da `db` için zamanlanmış yedek aç; `uploads` volume'u
+   (ekran görüntüleri) da yedeğe dahil et.
 
-Her iki yolda da bir [Supabase](https://supabase.com) hesabı gerekir (ücretsiz katman yeter).
+### Google ile giriş (isteğe bağlı)
 
-### 1. Depoyu al
+Google Cloud Console → **APIs & Services → Credentials → Create credentials →
+OAuth client ID → Web application**:
+
+- Authorized JavaScript origins: `https://journal.alanadin.com`
+- Authorized redirect URIs: `https://journal.alanadin.com/api/v1/auth/google/callback`
+
+Client ID ve secret'ı Coolify'a gir, yeniden deploy et. Supabase için açtığın
+bir OAuth istemcisi varsa aynısına yeni redirect URI'ı ekleyebilirsin.
+
+Aynı e-postayla parola hesabın varsa Google girişi ona bağlanır.
+
+### Supabase'ten taşımak
+
+Eski Supabase projesindeki kullanıcılar (parolalarıyla), tüm tablolar ve
+görseller tek komutla taşınır. Hedef veritabanı boş olmalı.
+
+Coolify → **api** servisi → **Terminal**:
 
 ```bash
-git clone https://github.com/muhammedsarisoy/trading-journal.git
-cd trading-journal
+SOURCE_DATABASE_URL='postgresql://postgres.<ref>:<parola>@aws-0-<bolge>.pooler.supabase.com:5432/postgres' \
+SUPABASE_URL='https://<ref>.supabase.co' \
+SUPABASE_SERVICE_ROLE_KEY='<secret key>' \
+import-supabase
 ```
 
-### 2. Supabase projesini hazırla
+`DATABASE_URL` ve `UPLOAD_DIR` konteynerde zaten tanımlı. Görseller yarıda
+kalırsa `import-supabase -files-only` tekrar çalıştırılabilir; var olan
+dosyalara dokunmaz.
 
-1. [supabase.com](https://supabase.com) → **New project**. Kurulumda verilen
-   **veritabanı parolasını kaydet**, bir daha gösterilmiyor.
-2. Sol menü **SQL Editor** → `supabase/schema.sql` dosyasının tamamını yapıştır → **Run**.
-   Tablolar, RLS politikaları, `trade-screenshots` bucket'ı ve `trades_enriched`
-   görünümü oluşur. Dosya idempotenttir, tekrar çalıştırılabilir.
-3. Şemayı daha önce kurduysan `supabase/migrations/` altındakileri numara sırasına
-   göre çalıştır.
+> Servis anahtarı RLS'i tamamen aşar. Yalnız bu komutta ver, bir dosyaya ya da
+> Coolify değişkenine kaydetme. Taşıma bitince Supabase panelinden yenile
+> (Settings → API Keys).
 
-### 3. Anahtarları topla
+Oturumlar taşınmaz: herkes bir kez yeniden giriş yapar.
 
-**Settings → API Keys**
+---
 
-| Alan | Değer |
-|---|---|
-| Project URL | `https://<proje-ref>.supabase.co` |
-| Publishable key | `sb_publishable_...` (eski projelerde `anon` `public`, `eyJhbGci...`) |
+## Yerelde geliştirmek
 
-> **Secret / `service_role` anahtarını hiçbir yere yazma.** RLS'i tamamen bypass
-> eder. `NEXT_PUBLIC_` önekli her değer tarayıcıya gönderilen pakete gömülür,
-> yani o anahtarı oraya koyarsan siteyi açan herkes tüm veriyi okuyup silebilir.
-> Derleme bunu yakalayıp durdurur, ama en baştan yapma.
-
-**Settings → Database → Connect → Session pooler** → bağlantı dizesini kopyala.
-`[YOUR-PASSWORD]` yerine 1. adımdaki veritabanı parolanı yaz.
-
-> Transaction pooler (port 6543) değil, **Session pooler (5432)** — pgx prepared
-> statement kullanıyor, transaction pooler bunu desteklemiyor.
-
-### 4. Ortam dosyalarını doldur
+Gerekenler: [Docker Desktop](https://www.docker.com/products/docker-desktop/),
+[Node.js 22+](https://nodejs.org), [Go 1.25+](https://go.dev/dl/).
 
 ```bash
+docker compose -f docker-compose.dev.yml up -d   # yalnız Postgres, :5432
 cp api/.env.example api/.env
 cp web/.env.example web/.env.local
 ```
 
-`api/.env`:
 ```bash
-DATABASE_URL=postgresql://postgres.<ref>:<parola>@aws-0-<bolge>.pooler.supabase.com:5432/postgres
-SUPABASE_JWKS_URL=https://<ref>.supabase.co/auth/v1/.well-known/jwks.json
+cd api && go run ./cmd/server          # :8080 — şemayı kendisi kurar
+cd web && npm install && npm run dev   # :3000
 ```
 
-`web/.env.local`:
-```bash
-NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_...
-NEXT_PUBLIC_API_URL=http://localhost:8080
-```
+http://localhost:3000 → **Kayıt ol** → **Ayarlar** → hesap tanımla → **Yeni İşlem**.
 
-### 5. Çalıştır
-
-**Docker:**
-```bash
-docker compose --env-file web/.env.local up -d --build
-```
-
-**Docker'sız:**
-```bash
-cd api  && go run ./cmd/server     # :8080
-cd web  && npm install && npm run dev   # :3000
-```
-
-### 6. İlk kullanım
-
-1. http://localhost:3000 → **Kayıt ol**
-2. E-posta doğrulaması açıksa gelen kutunu kontrol et. Kapatmak için:
-   Supabase → Authentication → Sign In / Providers → Email → **Confirm email** kapalı
-3. **Ayarlar** → hesap tanımla ("Hazır listeyi ekle" ile tek tıkla birkaç tane gelir)
-4. **Yeni İşlem** → ilk kaydı gir
+Tüm yığını Docker'da denemek için kökte `.env` oluştur (`.env.example`'dan),
+`docker-compose.yml` içinde web'e `ports: ["3000:3000"]` ekle ve
+`docker compose up -d --build`.
 
 ---
 
@@ -122,7 +114,9 @@ cd web  && npm install && npm run dev   # :3000
 - **Neye göre aldım:** strateji, giriş gerekçesi, baktığın teyitlerin listesi, etiketler
 - **Psikoloji:** işlem öncesi/sonrası duygu, güven ve stres düzeyi (1-5), plana uyum,
   yapılan hatalar, çıkarılan ders
-- **Ekran görüntüleri:** giriş/çıkış/analiz aşamalarına göre, özel bucket + imzalı bağlantı
+- **Ekran görüntüleri:** giriş/çıkış/analiz aşamalarına göre; sunucu diskinde,
+  yalnız sahibine açık
+- **Eğitim defteri:** eğitim → gün → not blokları (metin + grafik görseli)
 - Raporlar: net K/Z, toplam R, kazanma oranı, profit factor, beklenti, ortalama R,
   maksimum geri çekilme (para ve R), en büyük kazanç/kayıp
 - Grafikler **Para / R** düğmesiyle birim değiştirir; gün/hafta/ay/çeyrek/6 ay/yıl kovaları
@@ -145,14 +139,19 @@ Postgres'te `generated always as … stored`, yani tek yerde durur.
 
 ## Güvenlik
 
-- Her tablo RLS altında; politika `user_id = auth.uid()`
-- Go tarafında da her sorgu `user_id` ile sınırlanır — iki bağımsız katman
-- JWT doğrulaması JWKS (ES256/RS256) veya legacy HS256; `role` ve `aud` alanları
-  denetlenir, `anon` ve `service_role` jetonları reddedilir
-- Storage yolu `<user_id>/<trade_id>/<dosya>`; bucket özel, görüntüleme imzalı
-  bağlantıyla. API yolun kullanıcının kendi klasöründe kaldığını doğrular
+- Her sorgu Go tarafında `user_id` ile sınırlanır; veritabanına yalnız API bağlanır
+  ve dışarıya açık değildir
+- Oturum rastgele 32 baytlık jeton, **HttpOnly + SameSite=Lax** çerezde (https'de
+  Secure). Veritabanında yalnız SHA-256 özeti tutulur; çıkışta silinir
+- Durum değiştiren isteklerde `Origin` başlığı denetlenir (CSRF'e ikinci katman)
+- Parolalar bcrypt. Girişte e-posta başına (15 dakikada 10) ve IP başına sınır;
+  bilinmeyen e-postada da aynı süre harcanır, hesabın varlığı sızmaz
+- Google girişi yetkilendirme kodu + PKCE + state; yalnız doğrulanmış e-posta
+- Görseller `<user_id>/<sahip_id>/<dosya>` altında. Tür baytlardan anlaşılır
+  (PNG/JPEG/WebP/GIF), 10 MB sınırı var, sunarken yolun sahibine ait olduğu doğrulanır
+- `ALLOW_SIGNUP=false` ile yeni kayıt kapanır
 - Kâr/zarar ve R hesabı veritabanında generated column — istemci ezemez
-- İstek gövdesi 1 MiB ile sınırlı; container'lar root olmayan kullanıcıyla çalışır
+- JSON gövdesi 1 MiB ile sınırlı; container'lar root olmayan kullanıcıyla çalışır
 - Secret koda yazılmaz; `.env` / `.env.local` git dışıdır ve `.dockerignore`
   sayesinde imaja da kopyalanmaz
 
@@ -187,26 +186,35 @@ Haftalık cron önemli: kod değişmese de yeni açıklanan CVE'ler yakalanır.
 
 ## Bakım araçları
 
-Docker veya `psql` gerektirmez; `api/.env` içindeki `DATABASE_URL`'i kullanır.
+`api/.env` içindeki `DATABASE_URL` kullanılır.
 
 ```bash
 cd api
-go run ./cmd/migrate                        # supabase/migrations/*.sql sırayla
-go run ./cmd/migrate ../supabase/verify.sql # şema beklenen halde mi
-go run ./cmd/smoke                          # tüm rapor sorgularını DB'ye karşı dener
+go run ./cmd/migrate   # şemayı uygula (API açılışta zaten yapıyor)
+go run ./cmd/smoke     # tüm rapor sorgularını DB'ye karşı dener
 ```
 
 `smoke` rastgele bir kullanıcı kimliğiyle çalışır — veri yazmaz, yalnız sorguların
 geçerliliğini doğrular. Rapor SQL'i değiştirildiğinde çalıştır.
 
+Şemaya değişiklik eklerken `schema.sql` idempotent kalmalı (`if not exists`,
+`create or replace`): her açılışta yeniden çalışır.
+
 ## Uçlar
 
-Hepsi `Authorization: Bearer <supabase-access-token>` ister.
+Tarayıcı bunlara web'in `/api` yolundan ulaşır. `/auth/*` dışındakiler oturum
+çerezi (ya da `Authorization: Bearer <jeton>`) ister.
 
 ```
 GET    /healthz
+
+GET    /api/v1/auth/providers    POST /api/v1/auth/signup     POST /api/v1/auth/login
+POST   /api/v1/auth/logout       GET  /api/v1/auth/google/start?next=
+GET    /api/v1/auth/google/callback
+
 GET    /api/v1/me
 GET    /api/v1/meta/distinct
+GET    /api/v1/files/{bucket}/{user_id}/{sahip_id}/{dosya}
 
 GET    /api/v1/funds/            POST /api/v1/funds/
 POST   /api/v1/funds/seed        PUT  /api/v1/funds/{id}      DELETE /api/v1/funds/{id}
@@ -217,8 +225,10 @@ POST   /api/v1/platforms/seed    DELETE /api/v1/platforms/{id}
 GET    /api/v1/trades/           POST /api/v1/trades/
 GET    /api/v1/trades/{id}       PUT  /api/v1/trades/{id}     DELETE /api/v1/trades/{id}
 GET    /api/v1/trades/{id}/screenshots
-POST   /api/v1/trades/{id}/screenshots
+POST   /api/v1/trades/{id}/screenshots      (multipart: phase, caption, file)
 DELETE /api/v1/screenshots/{id}
+
+POST   /api/v1/lessons/{id}/images          (multipart: file)
 
 GET    /api/v1/stats/summary
 GET    /api/v1/stats/series?bucket=day|week|month|quarter|halfyear|year
@@ -232,11 +242,12 @@ Ortak süzgeç: `from`, `to`, `fund_id`, `platform_id`, `status`, `symbol`,
 
 | Belirti | Sebep |
 |---|---|
-| Kayıt olurken `401 Invalid API key` | `NEXT_PUBLIC_SUPABASE_ANON_KEY` yanlış ya da placeholder. Düzeltip **yeniden derle** — `NEXT_PUBLIC_*` derleme anında pakete gömülür |
-| API açılmıyor, `veritabanına erişilemedi` | `DATABASE_URL` yanlış, parola hatalı ya da Direct connection kullanılmış (IPv6 ister). Session pooler kullan |
-| Panel boş, istekler `401` | Jeton süresi dolmuş; çıkış yapıp tekrar gir |
-| Tablolar yok hatası | `supabase/schema.sql` çalıştırılmamış |
-| Docker derlemesi `NEXT_PUBLIC_... zorunlu` diyor | `--env-file web/.env.local` bayrağı unutulmuş |
+| API açılmıyor, `veritabanına erişilemedi` | `DATABASE_URL` yanlış ya da Postgres ayakta değil |
+| Giriş denemesi `API'ye ulaşılamadı` | Web API'yi bulamıyor: `API_INTERNAL_URL` yanlış ya da API kapalı |
+| Girişten sonra yine giriş sayfası | `APP_URL` https ama site http'den açılıyor: Secure çerez yazılmaz |
+| `İstek kaynağı kabul edilmedi` (403) | Tarayıcıdaki adres `APP_URL` / `ALLOWED_ORIGINS` ile aynı değil |
+| Google `redirect_uri_mismatch` | Console'daki redirect URI `<APP_URL>/api/v1/auth/google/callback` değil |
+| Görseller kayboldu | `uploads` volume'u bağlı değil ya da yeniden oluşturulmuş |
 
 ## Lisans
 

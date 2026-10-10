@@ -1,10 +1,25 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { CandlestickChart } from "lucide-react";
 
 import { LoginForm } from "@/components/login-form";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getAuthProviders, getSessionUser } from "@/lib/session";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  // Geçerli oturum varsa giriş ekranı atlanır. Kontrol burada, proxy.ts'de
+  // değil: süresi dolmuş bir çerez orada döngüye yol açardı.
+  const [user, providers, { next }] = await Promise.all([
+    getSessionUser(),
+    getAuthProviders(),
+    searchParams,
+  ]);
+  if (user) redirect(next?.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
+
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted p-6 md:p-10">
       <div className="flex w-full max-w-sm flex-col gap-6">
@@ -17,7 +32,7 @@ export default function LoginPage() {
 
         {/* useSearchParams istemci tarafında çözülür; sınır olmadan build hata verir. */}
         <Suspense fallback={<Skeleton className="h-[420px] w-full rounded-xl" />}>
-          <LoginForm />
+          <LoginForm google={providers.google} signupEnabled={providers.signup} />
         </Suspense>
       </div>
     </div>
