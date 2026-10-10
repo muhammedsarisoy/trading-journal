@@ -140,6 +140,13 @@
   --color-short: var(--short);
   --color-long-soft: var(--long-soft);
   --color-short-soft: var(--short-soft);
+  /* Kod text-profit, bg-loss-muted gibi anlamsal adları kullanıyor (pnlTone,
+     yön rozetleri, uyarılar); karşılıkları olmadan bu sınıflar hiçbir şey
+     üretmiyordu. */
+  --color-profit: var(--profit);
+  --color-loss: var(--loss);
+  --color-profit-muted: var(--profit-muted);
+  --color-loss-muted: var(--loss-muted);
   --color-rule-strong: var(--rule-strong);
 }
 
