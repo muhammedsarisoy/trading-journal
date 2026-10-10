@@ -333,6 +333,10 @@ func copyFiles(ctx context.Context, src *pgxpool.Pool) error {
 }
 
 func downloadObject(ctx context.Context, client *http.Client, base, key string, store *files.Store, bucket, name string) (bool, error) {
+	// Tekrar çalıştırmada var olan dosya yeniden indirilmez.
+	if store.Exists(bucket, name) {
+		return false, nil
+	}
 	segments := strings.Split(name, "/")
 	for i, s := range segments {
 		segments[i] = url.PathEscape(s)

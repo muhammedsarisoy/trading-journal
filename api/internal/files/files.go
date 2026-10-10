@@ -166,6 +166,16 @@ func (s *Store) Write(bucket, path string, r io.Reader) (bool, error) {
 	return true, os.Rename(tmp.Name(), dst)
 }
 
+// Exists, dosya diskte varsa true döner. Geçersiz yol için false.
+func (s *Store) Exists(bucket, path string) bool {
+	p, err := s.full(bucket, path)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(p)
+	return err == nil
+}
+
 // Open, sunmak için dosyayı açar ve gerçek içerik türünü döner.
 func (s *Store) Open(bucket, path string) (*os.File, string, error) {
 	p, err := s.full(bucket, path)

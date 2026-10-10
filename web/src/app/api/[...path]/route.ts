@@ -43,8 +43,12 @@ async function forward(request: NextRequest) {
 
   const headers = new Headers(request.headers);
   for (const h of HOP_BY_HOP) headers.delete(h);
-  headers.set("x-forwarded-host", request.headers.get("host") ?? "");
-  headers.set("x-forwarded-proto", request.nextUrl.protocol.replace(":", ""));
+  // Önde bir ters vekil (Coolify'da Traefik) varsa onun yazdığı değerler
+  // doğrudur: TLS orada sonlanır, Next'e gelen bağlantı http'dir.
+  if (!headers.has("x-forwarded-host")) headers.set("x-forwarded-host", request.nextUrl.host);
+  if (!headers.has("x-forwarded-proto")) {
+    headers.set("x-forwarded-proto", request.nextUrl.protocol.replace(":", ""));
+  }
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
 
