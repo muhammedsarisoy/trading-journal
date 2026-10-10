@@ -42,18 +42,12 @@ export function ScreenshotManager({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [saved, setSaved] = useState<Screenshot[]>([]);
-  const [urls, setUrls] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
   const loadSaved = useCallback(async () => {
     if (!tradeId) return;
     try {
-      const shots = await screenshotsApi.list(tradeId);
-      setSaved(shots);
-      const entries = await Promise.all(
-        shots.map(async (s) => [s.id, await screenshotsApi.signedUrl(s.path)] as const),
-      );
-      setUrls(Object.fromEntries(entries));
+      setSaved(await screenshotsApi.list(tradeId));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Görseller okunamadı");
     }
@@ -175,16 +169,14 @@ export function ScreenshotManager({
             {saved.map((shot) => (
               <figure key={shot.id} className="space-y-2">
                 <div className="relative aspect-video overflow-hidden rounded-md border bg-muted">
-                  {urls[shot.id] && (
-                    <Image
-                      src={urls[shot.id]}
-                      alt={shot.caption ?? "İşlem ekran görüntüsü"}
-                      fill
-                      unoptimized
-                      className="object-cover"
-                      sizes="(max-width: 768px) 100vw, 33vw"
-                    />
-                  )}
+                  <Image
+                    src={screenshotsApi.url(shot.path)}
+                    alt={shot.caption ?? "İşlem ekran görüntüsü"}
+                    fill
+                    unoptimized
+                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                  />
                 </div>
                 <figcaption className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span className="rounded border px-1.5 py-0.5">{PHASE_LABELS[shot.phase]}</span>

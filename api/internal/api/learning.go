@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/muhammedsarisoy/trading-journal/api/internal/auth"
+	"github.com/muhammedsarisoy/trading-journal/api/internal/files"
 	"github.com/muhammedsarisoy/trading-journal/api/internal/httpx"
 	"github.com/muhammedsarisoy/trading-journal/api/internal/model"
 )
@@ -67,7 +68,7 @@ func (s *Server) deleteCourse(w http.ResponseWriter, r *http.Request) error {
 	userID := auth.UserID(ctx)
 	id := chi.URLParam(r, "id")
 
-	// Silmeden önce Storage'tan kaldırılacak görselleri istemciye bildir.
+	// Kayıtlar cascade ile gider; görsel yolları silmeden önce alınır.
 	paths, err := s.store.NoteImagePathsForCourse(ctx, userID, id)
 	if err != nil {
 		return storeErr(err)
@@ -75,6 +76,7 @@ func (s *Server) deleteCourse(w http.ResponseWriter, r *http.Request) error {
 	if err := s.store.DeleteCourse(ctx, userID, id); err != nil {
 		return storeErr(err)
 	}
+	s.files.Remove(files.LessonImages, paths...)
 	httpx.JSON(w, http.StatusOK, map[string]any{"removed_paths": paths})
 	return nil
 }
@@ -143,6 +145,7 @@ func (s *Server) deleteLesson(w http.ResponseWriter, r *http.Request) error {
 	if err := s.store.DeleteLesson(ctx, userID, id); err != nil {
 		return storeErr(err)
 	}
+	s.files.Remove(files.LessonImages, paths...)
 	httpx.JSON(w, http.StatusOK, map[string]any{"removed_paths": paths})
 	return nil
 }
@@ -180,15 +183,44 @@ func (s *Server) updateNote(w http.ResponseWriter, r *http.Request) error {
 	if err := httpx.Decode(r, &in); err != nil {
 		return err
 	}
-	userID := auth.UserID(r.Context())
+	ctx := r.Context()
+	userID := auth.UserID(ctx)
+	id := chi.URLParam(r, "id")
 	if err := validateNote(&in, userID); err != nil {
 		return err
 	}
-	n, err := s.store.UpdateNote(r.Context(), userID, chi.URLParam(r, "id"), in)
+
+	// Görsel değiştiyse ya da kaldırıldıysa eskisi diskten silinir.
+	previous, err := s.store.NoteImagePath(ctx, userID, id)
 	if err != nil {
 		return storeErr(err)
 	}
+	n, err := s.store.UpdateNote(ctx, userID, id, in)
+	if err != nil {
+		return storeErr(err)
+	}
+	if previous != "" && (in.ImagePath == nil || *in.ImagePath != previous) {
+		s.files.Remove(files.LessonImages, previous)
+	}
 	httpx.JSON(w, http.StatusOK, n)
+	return nil
+}
+
+// uploadLessonImage, not bloğu için grafik görselini diske yazar ve yolunu
+// döner. Not, yolu ayrı bir güncellemeyle kaydeder.
+func (s *Server) uploadLessonImage(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	userID := auth.UserID(ctx)
+	lessonID := chi.URLParam(r, "id")
+
+	if _, err := s.store.GetLesson(ctx, userID, lessonID); err != nil {
+		return storeErr(err)
+	}
+	up, err := s.readUpload(w, r, files.LessonImages, userID+"/"+lessonID)
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, http.StatusCreated, map[string]string{"path": up.path})
 	return nil
 }
 
@@ -197,6 +229,7 @@ func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return storeErr(err)
 	}
+	s.files.Remove(files.LessonImages, path)
 	httpx.JSON(w, http.StatusOK, map[string]string{"removed_path": path})
 	return nil
 }

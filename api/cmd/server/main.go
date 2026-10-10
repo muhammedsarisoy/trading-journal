@@ -14,6 +14,7 @@ import (
 	"github.com/muhammedsarisoy/trading-journal/api/internal/auth"
 	"github.com/muhammedsarisoy/trading-journal/api/internal/config"
 	"github.com/muhammedsarisoy/trading-journal/api/internal/db"
+	"github.com/muhammedsarisoy/trading-journal/api/internal/files"
 	"github.com/muhammedsarisoy/trading-journal/api/internal/store"
 )
 
@@ -42,23 +43,44 @@ func run() error {
 	defer pool.Close()
 	slog.Info("veritabanı bağlantısı hazır")
 
-	verifier, err := auth.NewVerifier(cfg.JWTSecret, cfg.JWKSURL)
+	if cfg.AutoMigrate {
+		if err := db.Migrate(ctx, pool); err != nil {
+			return err
+		}
+		slog.Info("şema güncel")
+	}
+
+	fileStore, err := files.New(cfg.UploadDir)
 	if err != nil {
 		return err
 	}
 
+	google := auth.NewGoogle(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL())
+	if google != nil {
+		slog.Info("Google ile giriş açık", "redirect_url", cfg.GoogleRedirectURL())
+	}
+
+	server := api.NewServer(api.Options{
+		Store:       store.New(pool, cfg.Timezone),
+		Files:       fileStore,
+		Sessions:    auth.NewSessions(pool, cfg.SessionTTL, cfg.SecureCookies()),
+		Google:      google,
+		AllowSignup: cfg.AllowSignup,
+	})
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           api.Router(api.NewServer(store.New(pool, cfg.Timezone)), verifier, cfg.AllowedOrigins),
+		Handler:           api.Router(server, cfg.AllowedOrigins),
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
+		ReadTimeout:       60 * time.Second, // 10 MB'lık görsel yavaş bağlantıda da yetişsin
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("API dinlemede", "port", cfg.Port, "timezone", cfg.Timezone)
+		slog.Info("API dinlemede", "port", cfg.Port, "timezone", cfg.Timezone,
+			"uploads", fileStore.Root(), "signup", cfg.AllowSignup)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}

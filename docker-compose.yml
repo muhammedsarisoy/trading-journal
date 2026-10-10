@@ -1,33 +1,63 @@
+# Trading Journal — tek sunucuda tam kurulum (Coolify ya da düz Docker).
+#
+# Değerler kökteki .env dosyasından ya da Coolify > Environment Variables
+# ekranından gelir (bkz. .env.example):
+#
+#   docker compose up -d --build
+#
+# Dışarıya yalnız web açılır. Coolify'da web servisine alan adını ver
+# (ör. https://journal.alanadin.com); TLS'i Coolify'ın Traefik'i halleder.
+# API ve veritabanı yalnız iç ağda: tarayıcı API'ye web'in /api yolundan ulaşır.
+
 services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: trading_journal
+      POSTGRES_USER: journal
+      # Yalnız harf ve rakam kullan: bağlantı dizesine olduğu gibi giriyor.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U journal -d trading_journal"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   api:
     build:
       context: ./api
-    # DATABASE_URL ve JWKS adresi çalışma zamanında okunur, imaja gömülmez.
-    env_file:
-      - ./api/.env
     environment:
+      DATABASE_URL: postgres://journal:${POSTGRES_PASSWORD}@db:5432/trading_journal?sslmode=disable
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Istanbul}
       PORT: "8080"
-      ALLOWED_ORIGINS: "http://localhost:3000"
-    ports:
-      - "8080:8080"
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   web:
     build:
       context: ./web
-      # NEXT_PUBLIC_* değerleri derleme anında pakete gömülür, bu yüzden
-      # build arg olarak geçilir. Değerler web/.env.local'dan gelir:
-      #   docker compose --env-file web/.env.local up -d --build
-      # Boş bırakılırsa Dockerfile derlemeyi açıklayıcı mesajla durdurur.
-      # ":?" kullanılmıyor — o sözdizimi ps/logs/exec gibi derleme dışı
-      # komutları da kırıyor.
-      args:
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    environment:
+      API_INTERNAL_URL: http://api:8080
+    # Coolify, Traefik üzerinden bu porta yönlendirir. Düz Docker'da
+    # tarayıcıdan açmak için "ports: ['3000:3000']" ekle.
+    expose:
+      - "3000"
     depends_on:
       api:
         condition: service_healthy
-    ports:
-      - "3000:3000"
     restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:

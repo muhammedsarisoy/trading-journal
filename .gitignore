@@ -27,3 +27,6 @@ Thumbs.db
 
 # Geçici agent worktree'leri
 .claude/worktrees/
+
+# Yerelde yüklenen görseller
+api/data/

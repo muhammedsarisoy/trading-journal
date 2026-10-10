@@ -30,7 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { coursesApi, lessonsApi, notesApi, removeLessonImages } from "@/lib/api";
+import { coursesApi, lessonsApi, notesApi } from "@/lib/api";
 import { dateShort, minutesToText } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type {
@@ -58,7 +58,6 @@ export default function CoursePage() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notes, setNotes] = useState<LessonNote[]>([]);
-  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
 
   const [loading, setLoading] = useState(true);
   const [notesLoading, setNotesLoading] = useState(false);
@@ -118,25 +117,6 @@ export default function CoursePage() {
     }
     void loadNotes(selectedId);
   }, [selectedId, loadNotes]);
-
-  // Özel bucket: her görsel için imzalı adres alınır, sonuç önbelleğe yazılır.
-  useEffect(() => {
-    const missing = notes
-      .map((n) => n.image_path)
-      .filter((p): p is string => Boolean(p) && !imageUrls[p!]);
-    if (missing.length === 0) return;
-
-    let cancelled = false;
-    Promise.all(missing.map(async (p) => [p, await notesApi.signedUrl(p)] as const))
-      .then((entries) => {
-        if (!cancelled) setImageUrls((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
-      })
-      .catch(() => toast.error("Görseller okunamadı"));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [notes, imageUrls]);
 
   // --------------------------------------------------------------- eğitim
 
@@ -248,11 +228,10 @@ export default function CoursePage() {
   async function uploadImage(note: LessonNote, file: File) {
     if (!selectedId) return;
     setUploadingId(note.id);
-    const previous = note.image_path;
     try {
+      // Eski görseli API, not güncellenirken siler.
       const path = await notesApi.uploadImage(selectedId, file);
       await patchNote(note, { image_path: path });
-      if (previous) await removeLessonImages([previous]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Görsel yüklenemedi");
     } finally {
@@ -261,9 +240,7 @@ export default function CoursePage() {
   }
 
   async function removeImage(note: LessonNote) {
-    const previous = note.image_path;
     await patchNote(note, { image_path: null });
-    if (previous) await removeLessonImages([previous]);
   }
 
   function askDeleteNote(note: LessonNote) {
@@ -543,7 +520,7 @@ export default function CoursePage() {
                         note={note}
                         index={index}
                         count={notes.length}
-                        imageUrl={note.image_path ? imageUrls[note.image_path] : undefined}
+                        imageUrl={note.image_path ? notesApi.imageUrl(note.image_path) : undefined}
                         busy={uploadingId === note.id}
                         hasVideo={Boolean(lesson.video_url)}
                         onPatch={(patch) =>

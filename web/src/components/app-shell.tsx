@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { authApi } from "@/lib/api";
 
 const NAV = [
   { href: "/dashboard", label: "Panel", icon: LayoutDashboard },
@@ -81,7 +81,11 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
 
   async function signOut() {
-    await supabaseBrowser().auth.signOut();
+    try {
+      await authApi.logout();
+    } catch {
+      // Oturum zaten düşmüşse de giriş ekranına dönülür.
+    }
     router.push("/login");
     router.refresh();
   }

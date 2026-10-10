@@ -7,20 +7,53 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
 
 	"github.com/muhammedsarisoy/trading-journal/api/internal/auth"
+	"github.com/muhammedsarisoy/trading-journal/api/internal/files"
 	"github.com/muhammedsarisoy/trading-journal/api/internal/httpx"
 	"github.com/muhammedsarisoy/trading-journal/api/internal/model"
 	"github.com/muhammedsarisoy/trading-journal/api/internal/store"
 )
 
-// Server, HTTP katmanını store'a bağlar.
+// Server, HTTP katmanını store'a, dosya deposuna ve oturumlara bağlar.
 type Server struct {
-	store *store.Store
+	store        *store.Store
+	files        *files.Store
+	sessions     *auth.Sessions
+	google       *auth.Google // nil: Google ile giriş kapalı
+	allowSignup  bool
+	loginLimiter *httprate.RateLimiter
 }
 
-func NewServer(s *store.Store) *Server {
-	return &Server{store: s}
+// Options, Server'ın bağımlılıkları.
+type Options struct {
+	Store       *store.Store
+	Files       *files.Store
+	Sessions    *auth.Sessions
+	Google      *auth.Google
+	AllowSignup bool
+}
+
+func NewServer(o Options) *Server {
+	return &Server{
+		store:       o.Store,
+		files:       o.Files,
+		sessions:    o.Sessions,
+		google:      o.Google,
+		allowSignup: o.AllowSignup,
+		// Aynı e-postaya 15 dakikada en çok 10 deneme: IP değiştirerek
+		// parola denemeyi de yavaşlatır.
+		loginLimiter: httprate.NewRateLimiter(10, 15*time.Minute,
+			httprate.WithLimitHandler(tooManyRequests)),
+	}
+}
+
+func tooManyRequests(w http.ResponseWriter, _ *http.Request) {
+	httpx.Error(w, &httpx.StatusError{
+		Status:  http.StatusTooManyRequests,
+		Message: "Çok fazla deneme. Biraz bekleyip tekrar dene.",
+	})
 }
 
 // ---------------------------------------------------------------- Yardımcılar
@@ -71,9 +104,15 @@ func storeErr(err error) error {
 // ---------------------------------------------------------------- Oturum
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	name, err := s.store.DisplayName(ctx, auth.UserID(ctx))
+	if err != nil {
+		return storeErr(err)
+	}
 	httpx.JSON(w, http.StatusOK, map[string]string{
-		"user_id": auth.UserID(r.Context()),
-		"email":   auth.Email(r.Context()),
+		"user_id":      auth.UserID(ctx),
+		"email":        auth.Email(ctx),
+		"display_name": name,
 	})
 	return nil
 }
@@ -272,7 +311,7 @@ func (s *Server) deleteTrade(w http.ResponseWriter, r *http.Request) error {
 	userID := auth.UserID(ctx)
 	id := chi.URLParam(r, "id")
 
-	// Silmeden önce Storage'tan kaldırılacak dosya yollarını istemciye bildir.
+	// Kayıtlar cascade ile gider; dosya yolları silmeden önce alınır.
 	paths, err := s.store.ScreenshotPathsForTrade(ctx, userID, id)
 	if err != nil {
 		return storeErr(err)
@@ -280,6 +319,7 @@ func (s *Server) deleteTrade(w http.ResponseWriter, r *http.Request) error {
 	if err := s.store.DeleteTrade(ctx, userID, id); err != nil {
 		return storeErr(err)
 	}
+	s.files.Remove(files.Screenshots, paths...)
 	httpx.JSON(w, http.StatusOK, map[string]any{"removed_paths": paths})
 	return nil
 }
@@ -295,28 +335,39 @@ func (s *Server) listScreenshots(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// createScreenshot, multipart gövdedeki görseli diske yazar ve kaydını açar.
+// Alanlar: phase, caption, file (zorunlu).
 func (s *Server) createScreenshot(w http.ResponseWriter, r *http.Request) error {
-	var in model.ScreenshotInput
-	if err := httpx.Decode(r, &in); err != nil {
+	ctx := r.Context()
+	userID := auth.UserID(ctx)
+	tradeID := chi.URLParam(r, "id")
+
+	// Dosya diske yazılmadan önce işlemin bu kullanıcıya ait olduğu görülsün.
+	if _, err := s.store.GetTrade(ctx, userID, tradeID); err != nil {
+		return storeErr(err)
+	}
+
+	up, err := s.readUpload(w, r, files.Screenshots, userID+"/"+tradeID)
+	if err != nil {
 		return err
 	}
-	in.Path = strings.TrimSpace(in.Path)
-	if in.Path == "" {
-		return httpx.BadRequest("Dosya yolu boş olamaz", nil)
+
+	in := model.ScreenshotInput{Path: up.path, Phase: strings.TrimSpace(up.fields["phase"])}
+	if c := strings.TrimSpace(up.fields["caption"]); c != "" {
+		in.Caption = &c
 	}
 	if in.Phase == "" {
 		in.Phase = "entry"
 	}
 	if !allowed(in.Phase, "entry", "exit", "analysis") {
+		s.files.Remove(files.Screenshots, up.path)
 		return httpx.BadRequest("Geçersiz aşama", nil)
 	}
-	userID := auth.UserID(r.Context())
-	if err := ownedStoragePath(userID, in.Path); err != nil {
-		return err
-	}
 
-	sc, err := s.store.CreateScreenshot(r.Context(), userID, chi.URLParam(r, "id"), in)
+	sc, err := s.store.CreateScreenshot(ctx, userID, tradeID, in)
 	if err != nil {
+		// Kayıt açılamadıysa yüklenen dosyayı geride bırakma.
+		s.files.Remove(files.Screenshots, up.path)
 		return storeErr(err)
 	}
 	httpx.JSON(w, http.StatusCreated, sc)
@@ -328,6 +379,7 @@ func (s *Server) deleteScreenshot(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return storeErr(err)
 	}
+	s.files.Remove(files.Screenshots, path)
 	httpx.JSON(w, http.StatusOK, map[string]string{"removed_path": path})
 	return nil
 }

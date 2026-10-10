@@ -1,56 +1,60 @@
 -- =====================================================================
--- Trader Journal — Supabase şeması
--- Çalıştırma: Supabase panel > SQL Editor > bu dosyanın tamamını yapıştır > Run
--- Tekrar çalıştırılabilir (idempotent).
+-- Trading Journal — PostgreSQL şeması
+--
+-- API açılışta bu dosyayı kendiliğinden uygular (AUTO_MIGRATE=false ile
+-- kapatılabilir). Elle: cd api && go run ./cmd/migrate
+--
+-- Tekrar çalıştırılabilir (idempotent). Yeni bir değişiklik eklerken de bu
+-- kurala uy: "if not exists", "create or replace", "drop ... if exists".
+--
+-- Satır düzeyi yetki API'de: her sorgu user_id ile süzülür. Veritabanına
+-- yalnız API bağlanır, dışarıya açık değildir.
 -- =====================================================================
 
 create extension if not exists pgcrypto;
+create extension if not exists citext;
 
 -- ---------------------------------------------------------------------
--- 1. Profil
+-- 1. Kullanıcılar ve oturumlar
+-- ---------------------------------------------------------------------
+create table if not exists public.users (
+  id            uuid primary key default gen_random_uuid(),
+  email         citext not null unique,
+  password_hash text,                                 -- bcrypt; yalnız Google ile girenlerde boş
+  google_sub    text unique,                          -- Google hesabının değişmez kimliği
+  created_at    timestamptz not null default now(),
+  last_login_at timestamptz
+);
+
+-- Çerezdeki jetonun kendisi değil, SHA-256 özeti saklanır: veritabanı
+-- sızsa bile oturumlar ele geçirilemez.
+create table if not exists public.sessions (
+  token_hash bytea primary key,
+  user_id    uuid not null references public.users on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  user_agent text
+);
+
+create index if not exists sessions_user_idx    on public.sessions (user_id);
+create index if not exists sessions_expires_idx on public.sessions (expires_at);
+
+-- ---------------------------------------------------------------------
+-- 2. Profil
 -- ---------------------------------------------------------------------
 create table if not exists public.profiles (
-  id            uuid primary key references auth.users on delete cascade,
+  id            uuid primary key references public.users on delete cascade,
   display_name  text,
   base_currency text not null default 'USD',
   created_at    timestamptz not null default now()
 );
 
--- Yeni kullanıcı kaydolunca profil satırı otomatik açılır.
--- Görünen ad sırası: kendi alanımız > OAuth sağlayıcısının alanı > e-posta.
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $fn$
-begin
-  insert into public.profiles (id, display_name)
-  values (
-    new.id,
-    coalesce(
-      new.raw_user_meta_data ->> 'display_name',
-      new.raw_user_meta_data ->> 'full_name',
-      new.raw_user_meta_data ->> 'name',
-      split_part(new.email, '@', 1)
-    )
-  )
-  on conflict (id) do nothing;
-  return new;
-end;
-$fn$;
-
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
-
 -- ---------------------------------------------------------------------
--- 2. Fonlar / hesaplar  ("hangi fondan aldım")
+-- 3. Fonlar / hesaplar  ("hangi fondan aldım")
 -- ---------------------------------------------------------------------
 create table if not exists public.funds (
   id               uuid primary key default gen_random_uuid(),
-  user_id          uuid not null default auth.uid() references auth.users on delete cascade,
+  user_id          uuid not null references public.users on delete cascade,
   name             text not null,
   broker           text,
   currency         text not null default 'USD',
@@ -63,22 +67,22 @@ create table if not exists public.funds (
 );
 
 -- ---------------------------------------------------------------------
--- 3. Platformlar  ("hangi platformdan aldım")
+-- 4. Platformlar  ("hangi platformdan aldım")
 -- ---------------------------------------------------------------------
 create table if not exists public.platforms (
   id         uuid primary key default gen_random_uuid(),
-  user_id    uuid not null default auth.uid() references auth.users on delete cascade,
+  user_id    uuid not null references public.users on delete cascade,
   name       text not null,
   created_at timestamptz not null default now(),
   unique (user_id, name)
 );
 
 -- ---------------------------------------------------------------------
--- 4. İşlemler
+-- 5. İşlemler
 -- ---------------------------------------------------------------------
 create table if not exists public.trades (
   id            uuid primary key default gen_random_uuid(),
-  user_id       uuid not null default auth.uid() references auth.users on delete cascade,
+  user_id       uuid not null references public.users on delete cascade,
   fund_id       uuid references public.funds     on delete set null,
   platform_id   uuid references public.platforms on delete set null,
 
@@ -186,12 +190,12 @@ create trigger trades_touch_updated_at
   for each row execute function public.touch_updated_at();
 
 -- ---------------------------------------------------------------------
--- 5. İşlem ekran görüntüleri
---    Dosya yolu: trade-screenshots/<user_id>/<trade_id>/<dosya>
+-- 6. İşlem ekran görüntüleri
+--    Dosya diskte: <UPLOAD_DIR>/trade-screenshots/<user_id>/<trade_id>/<dosya>
 -- ---------------------------------------------------------------------
 create table if not exists public.trade_screenshots (
   id         uuid primary key default gen_random_uuid(),
-  user_id    uuid not null default auth.uid() references auth.users on delete cascade,
+  user_id    uuid not null references public.users on delete cascade,
   trade_id   uuid not null references public.trades on delete cascade,
   path       text not null,
   caption    text,
@@ -202,62 +206,10 @@ create table if not exists public.trade_screenshots (
 create index if not exists screenshots_trade_idx on public.trade_screenshots (trade_id);
 
 -- ---------------------------------------------------------------------
--- 6. RLS — her kullanıcı yalnız kendi satırını görür
--- ---------------------------------------------------------------------
-alter table public.profiles          enable row level security;
-alter table public.funds             enable row level security;
-alter table public.platforms         enable row level security;
-alter table public.trades            enable row level security;
-alter table public.trade_screenshots enable row level security;
-
-drop policy if exists profiles_self on public.profiles;
-create policy profiles_self on public.profiles
-  for all using (id = auth.uid()) with check (id = auth.uid());
-
-drop policy if exists funds_own on public.funds;
-create policy funds_own on public.funds
-  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
-
-drop policy if exists platforms_own on public.platforms;
-create policy platforms_own on public.platforms
-  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
-
-drop policy if exists trades_own on public.trades;
-create policy trades_own on public.trades
-  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
-
-drop policy if exists screenshots_own on public.trade_screenshots;
-create policy screenshots_own on public.trade_screenshots
-  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
-
--- ---------------------------------------------------------------------
--- 7. Storage — özel bucket + klasör bazlı RLS
--- ---------------------------------------------------------------------
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('trade-screenshots', 'trade-screenshots', false, 10485760,
-        array['image/png','image/jpeg','image/webp','image/gif'])
-on conflict (id) do update
-  set file_size_limit    = excluded.file_size_limit,
-      allowed_mime_types = excluded.allowed_mime_types;
-
-drop policy if exists screenshot_objects_own on storage.objects;
-create policy screenshot_objects_own on storage.objects
-  for all
-  using (
-    bucket_id = 'trade-screenshots'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  )
-  with check (
-    bucket_id = 'trade-screenshots'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  );
-
--- ---------------------------------------------------------------------
--- 8. Zenginleştirilmiş görünüm — liste/rapor sorguları tek yerden
+-- 7. Zenginleştirilmiş görünüm — liste/rapor sorguları tek yerden
 -- ---------------------------------------------------------------------
 drop view if exists public.trades_enriched;
-create view public.trades_enriched
-with (security_invoker = true) as
+create view public.trades_enriched as
 select
   t.*,
   f.name     as fund_name,
@@ -274,17 +226,13 @@ from public.trades t
 left join public.funds     f on f.id = t.fund_id
 left join public.platforms p on p.id = t.platform_id;
 
-
 -- ---------------------------------------------------------------------
--- 9. Eğitim defteri
+-- 8. Eğitim defteri
 --    courses → lessons (gün) → lesson_notes (metin + grafik görseli)
--- ---------------------------------------------------------------------
--- ---------------------------------------------------------------------
--- Eğitim serisi
 -- ---------------------------------------------------------------------
 create table if not exists public.courses (
   id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null default auth.uid() references auth.users on delete cascade,
+  user_id     uuid not null references public.users on delete cascade,
   title       text not null,
   instructor  text,                                  -- eğitmen / kanal
   url         text,                                  -- oynatma listesi ya da kurs adresi
@@ -296,12 +244,9 @@ create table if not exists public.courses (
 
 create index if not exists courses_user_idx on public.courses (user_id, created_at desc);
 
--- ---------------------------------------------------------------------
--- Gün / ders
--- ---------------------------------------------------------------------
 create table if not exists public.lessons (
   id           uuid primary key default gen_random_uuid(),
-  user_id      uuid not null default auth.uid() references auth.users on delete cascade,
+  user_id      uuid not null references public.users on delete cascade,
   course_id    uuid not null references public.courses on delete cascade,
   day_no       integer,                              -- serideki sıra ("Gün 3")
   title        text not null,
@@ -318,13 +263,10 @@ create table if not exists public.lessons (
 create index if not exists lessons_course_idx on public.lessons (course_id, day_no, created_at);
 create index if not exists lessons_user_idx   on public.lessons (user_id, studied_on desc);
 
--- ---------------------------------------------------------------------
--- Not bloğu
--- Görsel dosyası Storage'ta: lesson-images/<user_id>/<lesson_id>/<dosya>
--- ---------------------------------------------------------------------
+-- Görsel dosyası diskte: <UPLOAD_DIR>/lesson-images/<user_id>/<lesson_id>/<dosya>
 create table if not exists public.lesson_notes (
   id            uuid primary key default gen_random_uuid(),
-  user_id       uuid not null default auth.uid() references auth.users on delete cascade,
+  user_id       uuid not null references public.users on delete cascade,
   lesson_id     uuid not null references public.lessons on delete cascade,
   sort_order    integer not null default 0,
   heading       text,
@@ -338,9 +280,6 @@ create table if not exists public.lesson_notes (
 
 create index if not exists lesson_notes_lesson_idx on public.lesson_notes (lesson_id, sort_order, created_at);
 
--- ---------------------------------------------------------------------
--- updated_at tetikleyicileri (fonksiyon 001'de tanımlı)
--- ---------------------------------------------------------------------
 drop trigger if exists courses_touch_updated_at on public.courses;
 create trigger courses_touch_updated_at
   before update on public.courses
@@ -356,53 +295,9 @@ create trigger lesson_notes_touch_updated_at
   before update on public.lesson_notes
   for each row execute function public.touch_updated_at();
 
--- ---------------------------------------------------------------------
--- RLS
--- ---------------------------------------------------------------------
-alter table public.courses      enable row level security;
-alter table public.lessons      enable row level security;
-alter table public.lesson_notes enable row level security;
-
-drop policy if exists courses_own on public.courses;
-create policy courses_own on public.courses
-  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
-
-drop policy if exists lessons_own on public.lessons;
-create policy lessons_own on public.lessons
-  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
-
-drop policy if exists lesson_notes_own on public.lesson_notes;
-create policy lesson_notes_own on public.lesson_notes
-  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
-
--- ---------------------------------------------------------------------
--- Storage — ders görselleri için özel bucket
--- ---------------------------------------------------------------------
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('lesson-images', 'lesson-images', false, 10485760,
-        array['image/png','image/jpeg','image/webp','image/gif'])
-on conflict (id) do update
-  set file_size_limit    = excluded.file_size_limit,
-      allowed_mime_types = excluded.allowed_mime_types;
-
-drop policy if exists lesson_image_objects_own on storage.objects;
-create policy lesson_image_objects_own on storage.objects
-  for all
-  using (
-    bucket_id = 'lesson-images'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  )
-  with check (
-    bucket_id = 'lesson-images'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  );
-
--- ---------------------------------------------------------------------
 -- Liste görünümü — gün ve not sayıları tek sorguda
--- ---------------------------------------------------------------------
 drop view if exists public.courses_enriched;
-create view public.courses_enriched
-with (security_invoker = true) as
+create view public.courses_enriched as
 select
   c.*,
   l.lesson_count,
