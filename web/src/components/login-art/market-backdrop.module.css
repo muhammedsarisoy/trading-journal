@@ -1,0 +1,171 @@
+/*
+ * MarketBackdrop stilleri. Kaynak ve lisans: market-backdrop.tsx başlığı.
+ * Yalnız transform, opacity ve clip-path oynatılır; sürekli dönen tek şey
+ * son fiyattaki nabızdır. Hareket azaltma tercihinde son kare statik kalır.
+ */
+
+.root {
+  /* Kart üstte opak durur; arka plan yalnız kenarlardan sezilir. */
+  --art-alpha: 0.42;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  /* Üst kenar (logo) ve alt kenar boş kalsın. */
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 24%, #000 84%, transparent 100%);
+}
+
+:global(.dark) .root {
+  --art-alpha: 0.55;
+}
+
+/* Dar ekranda kart neredeyse tüm genişliği kaplar; arka plan daha da geri çekilir. */
+@media (max-width: 639px) {
+  .root {
+    --art-alpha: 0.26;
+  }
+
+  :global(.dark) .root {
+    --art-alpha: 0.36;
+  }
+}
+
+/* Grafik ızgarası: sabit, yalnız belirerek gelir. */
+.grid {
+  background-image:
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px),
+    linear-gradient(to right, var(--border) 1px, transparent 1px);
+  background-size: 56px 56px;
+  background-position: center;
+  mask-image: radial-gradient(ellipse at center, #000 25%, transparent 75%);
+  animation: fade-in 700ms var(--ease-out) both;
+}
+
+/* İçerik sütununun çevresi temiz kalsın: form altındaki metin grafiğin üstüne binmez. */
+.chart {
+  mask-image: radial-gradient(ellipse 320px 400px at 50% 50%, transparent 55%, #000 100%);
+}
+
+.candles {
+  opacity: var(--art-alpha);
+}
+
+.candle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: candle-rise 480ms var(--ease-out) both;
+  animation-delay: calc(120ms + var(--i) * 24ms);
+}
+
+.candle line {
+  stroke-width: 1;
+}
+
+.up {
+  fill: var(--long);
+  stroke: var(--long);
+}
+
+.down {
+  fill: var(--short);
+  stroke: var(--short);
+}
+
+/* Hareketli ortalama: Uiverse yükleyicisindeki gibi soldan sağa açılır. */
+.ma {
+  opacity: calc(var(--art-alpha) + 0.15);
+  animation: sweep 1500ms var(--ease-in-out) 350ms both;
+}
+
+.ma polyline {
+  fill: none;
+  stroke: var(--chart-3);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.level,
+.dot,
+.tag {
+  animation: fade-in 400ms var(--ease-out) 1900ms both;
+}
+
+.level {
+  height: 0;
+  border-top: 1px dashed var(--long);
+  opacity: calc(var(--art-alpha) + 0.15);
+}
+
+.dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 9999px;
+  background: var(--long);
+  box-shadow: 0 0 0 2px var(--muted);
+}
+
+/* Canlı fiyat nabzı — kompozitörde çalışır (transform + opacity). */
+.dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--long);
+  animation: pulse 2400ms var(--ease-out) 2300ms infinite both;
+}
+
+.tag {
+  translate: 0 -50%;
+  background: var(--long);
+  color: var(--background);
+  opacity: 0.9;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes candle-rise {
+  from {
+    opacity: 0;
+    transform: scaleY(0.3);
+  }
+}
+
+@keyframes sweep {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(3.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grid,
+  .candle,
+  .ma,
+  .level,
+  .dot,
+  .tag {
+    animation: none;
+  }
+
+  .dot::after {
+    display: none;
+  }
+}
