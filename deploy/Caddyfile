@@ -1,0 +1,15 @@
+# Caddy: HTTPS sertifikasını (Let's Encrypt) kendisi alır ve yeniler,
+# istekleri web'e aktarır.
+#
+# Önde Cloudflare proxy'si var. Gerçek istemci IP'si CF-Connecting-IP
+# başlığında gelir; API'deki IP başına hız sınırı bunu kullanır. Sunucunun
+# güvenlik duvarı 80/443'ü yalnız Cloudflare'e açtığı için başlık
+# dışarıdan sahtelenemez.
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy web:3000 {
+		header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+	}
+}
