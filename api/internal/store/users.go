@@ -82,10 +82,32 @@ func (s *Store) UserByGoogleSub(ctx context.Context, sub string) (*User, error) 
 }
 
 // LinkGoogle, mevcut hesaba Google kimliğini bağlar.
+//
+// Parolalı kayıtta e-posta sahipliği hiç doğrulanmadığı için o parola,
+// adresi başkası önceden kaydettiyse saldırgana ait olabilir. Sahipliği artık
+// Google kanıtladığından parola silinir ve hesabın açık oturumları kapatılır;
+// aksi hâlde saldırgan bağlanan hesaba girmeye devam ederdi. Hesap başka bir
+// Google kimliğine bağlıysa ErrConflict döner.
 func (s *Store) LinkGoogle(ctx context.Context, userID, sub string) error {
-	_, err := s.pool.Exec(ctx,
-		"update public.users set google_sub = $2 where id = $1 and google_sub is null", userID, sub)
-	return err
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	tag, err := tx.Exec(ctx,
+		`update public.users set google_sub = $2, password_hash = null
+		 where id = $1 and google_sub is null`, userID, sub)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrConflict
+	}
+	if _, err := tx.Exec(ctx, "delete from public.sessions where user_id = $1", userID); err != nil {
+		return fmt.Errorf("oturumlar kapatılamadı: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 // TouchLogin, son giriş zamanını günceller.

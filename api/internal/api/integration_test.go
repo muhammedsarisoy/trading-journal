@@ -296,24 +296,68 @@ func TestLoginDoesNotRevealAccounts(t *testing.T) {
 	}
 }
 
+// loginFrom, verilen istemci IP'sinden (ters vekilin yazdığı X-Real-IP) giriş dener.
+func (c *client) loginFrom(ip, email, password string) resp {
+	c.a.t.Helper()
+	b, _ := json.Marshal(map[string]string{"email": email, "password": password})
+	return c.send("POST", "/api/v1/auth/login", bytes.NewReader(b), "application/json", map[string]string{"X-Real-IP": ip})
+}
+
 func TestLoginRateLimitPerEmail(t *testing.T) {
 	a := newApp(t)
 	a.signedUp("ali@example.com")
 	c := a.client()
+	const attacker = "198.51.100.7"
 
 	for i := range 10 {
-		if r := c.do("POST", "/api/v1/auth/login", map[string]string{"email": "ali@example.com", "password": "yanlis1234"}); r.status != 401 {
+		if r := c.loginFrom(attacker, "ali@example.com", "yanlis1234"); r.status != 401 {
 			t.Fatalf("deneme %d: %d", i+1, r.status)
 		}
 	}
-	r := c.do("POST", "/api/v1/auth/login", map[string]string{"email": "Ali@Example.com", "password": "parola1234"})
-	if r.status != http.StatusTooManyRequests {
+	// Sınır dolunca aynı kaynaktan doğru parola da reddedilir; yoksa yanıt
+	// farkı parolayı ele verirdi.
+	if r := c.loginFrom(attacker, "Ali@Example.com", "parola1234"); r.status != http.StatusTooManyRequests {
 		t.Fatalf("11. deneme (doğru parolayla bile) sınırlanmalı: %d", r.status)
+	}
+	// Hesap sahibi başka bir IP'den kilitlenmeden girer.
+	if r := c.loginFrom("203.0.113.9", "ali@example.com", "parola1234"); r.status != 200 {
+		t.Fatalf("saldırgan hesap sahibini kilitledi: %d", r.status)
 	}
 	// Başka bir hesap etkilenmez.
 	a.signedUp("veli@example.com")
-	if r := c.do("POST", "/api/v1/auth/login", map[string]string{"email": "veli@example.com", "password": "parola1234"}); r.status != 200 {
+	if r := c.loginFrom(attacker, "veli@example.com", "parola1234"); r.status != 200 {
 		t.Fatalf("başka e-posta sınırdan etkilendi: %d", r.status)
+	}
+}
+
+func TestLoginCountsOnlyFailures(t *testing.T) {
+	a := newApp(t)
+	a.signedUp("ali@example.com")
+	c := a.client()
+	for i := range 12 {
+		if r := c.loginFrom("203.0.113.9", "ali@example.com", "parola1234"); r.status != 200 {
+			t.Fatalf("başarılı giriş %d sınırlandı: %d", i+1, r.status)
+		}
+	}
+}
+
+func TestAuthLimitIgnoresSpoofableIPHeaders(t *testing.T) {
+	a := newApp(t)
+	c := a.client()
+	try := func(i int) resp {
+		b, _ := json.Marshal(map[string]string{"email": "gecersiz", "password": "x"})
+		return c.send("POST", "/api/v1/auth/login", bytes.NewReader(b), "application/json", map[string]string{
+			"True-Client-IP":  fmt.Sprintf("192.0.2.%d", i),
+			"X-Forwarded-For": fmt.Sprintf("192.0.2.%d", i),
+		})
+	}
+	for i := range 30 {
+		if r := try(i); r.status != 401 {
+			t.Fatalf("istek %d: %d", i+1, r.status)
+		}
+	}
+	if r := try(99); r.status != http.StatusTooManyRequests {
+		t.Fatalf("sahte IP başlıkları IP sınırını atlattı: %d", r.status)
 	}
 }
 
@@ -719,14 +763,52 @@ func TestGoogleLoginCreatesAndLinksAccounts(t *testing.T) {
 		t.Fatalf("tekrar girişte yeni hesap açıldı: %s", n)
 	}
 
-	// Parola hesabı olan e-posta: Google kimliği ona bağlanır, parola da çalışmaya devam eder.
+	// Parola hesabı olan e-posta: Google kimliği ona bağlanır.
 	_, uid := a.signedUp("ali@example.com")
 	g.login(t, a.client(), "/", auth.GoogleUser{Sub: "g-2", Email: "ali@example.com", EmailVerified: true})
 	if sub := a.scalar("select coalesce(google_sub,'') from public.users where id = $1", uid); sub != "g-2" {
 		t.Fatalf("Google kimliği bağlanmadı: %q", sub)
 	}
-	if r := a.client().do("POST", "/api/v1/auth/login", map[string]string{"email": "ali@example.com", "password": "parola1234"}); r.status != 200 {
-		t.Fatalf("bağlamadan sonra parola girişi %d", r.status)
+}
+
+// Biri, kurbanın e-postasıyla önceden parolalı hesap açarsa (kayıtta e-posta
+// doğrulanmıyor), kurban Google ile girdiğinde o parola ve oturumlar geçersiz
+// olmalı; yoksa saldırgan kurbanın verisini okumaya devam eder.
+func TestGoogleLinkRevokesPreRegisteredPassword(t *testing.T) {
+	g := newFakeGoogle(t)
+	a := newApp(t, g.configure)
+
+	attacker, uid := a.signedUp("kurban@gmail.com")
+
+	victim := a.client()
+	g.login(t, victim, "/", auth.GoogleUser{Sub: "g-kurban", Email: "kurban@gmail.com", EmailVerified: true})
+	if me := victim.do("GET", "/api/v1/me", nil); me.status != 200 || me.json(t)["user_id"] != uid {
+		t.Fatalf("kurban hesaba giremedi: %d %s", me.status, me.body)
+	}
+	tid := victim.createTrade()
+
+	if r := attacker.do("GET", "/api/v1/trades/"+tid, nil); r.status != http.StatusUnauthorized {
+		t.Fatalf("saldırganın eski oturumu hâlâ geçerli: %d", r.status)
+	}
+	if r := a.client().do("POST", "/api/v1/auth/login", map[string]string{"email": "kurban@gmail.com", "password": "parola1234"}); r.status != http.StatusUnauthorized {
+		t.Fatalf("önceden kaydedilen parola hâlâ çalışıyor: %d", r.status)
+	}
+	// Kurbanın kendi Google oturumu açık kalır.
+	if r := victim.do("GET", "/api/v1/trades/"+tid, nil); r.status != 200 {
+		t.Fatalf("kurbanın oturumu kapandı: %d", r.status)
+	}
+}
+
+func TestGoogleLinkRefusesSecondSub(t *testing.T) {
+	g := newFakeGoogle(t)
+	a := newApp(t, g.configure)
+
+	g.login(t, a.client(), "/", auth.GoogleUser{Sub: "g-ilk", Email: "ayse@gmail.com", EmailVerified: true})
+	// Aynı e-postayı taşıyan başka bir Google kimliği hesaba giremez.
+	c := a.client()
+	loc := g.login(t, c, "/", auth.GoogleUser{Sub: "g-baska", Email: "ayse@gmail.com", EmailVerified: true})
+	if !strings.HasPrefix(loc, "/login?error=") || c.cookie(auth.CookieName) != nil {
+		t.Fatalf("ikinci Google kimliği hesaba girdi: %s", loc)
 	}
 }
 
