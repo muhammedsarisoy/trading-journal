@@ -42,9 +42,8 @@ func NewServer(o Options) *Server {
 		sessions:    o.Sessions,
 		google:      o.Google,
 		allowSignup: o.AllowSignup,
-		// Aynı e-postaya 15 dakikada en çok 10 deneme: IP değiştirerek
-		// parola denemeyi de yavaşlatır.
-		loginLimiter: httprate.NewRateLimiter(10, 15*time.Minute,
+		// Aynı e-posta+IP için 15 dakikada en çok 10 hatalı deneme (bkz. login).
+		loginLimiter: httprate.NewRateLimiter(loginFailLimit, 15*time.Minute,
 			httprate.WithLimitHandler(tooManyRequests)),
 	}
 }

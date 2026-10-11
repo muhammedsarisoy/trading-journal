@@ -12,6 +12,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/go-chi/chi/v5/middleware"
+
 	"github.com/muhammedsarisoy/trading-journal/api/internal/auth"
 	"github.com/muhammedsarisoy/trading-journal/api/internal/httpx"
 	"github.com/muhammedsarisoy/trading-journal/api/internal/store"
@@ -22,6 +24,7 @@ const (
 	oauthCookiePath = "/api/v1/auth/google"
 	msgBadLogin     = "E-posta veya parola hatalı."
 	msgSignupClosed = "Yeni kayıt kapalı."
+	loginFailLimit  = 10 // e-posta+IP başına 15 dakikadaki hatalı giriş sınırı
 )
 
 type credentials struct {
@@ -125,7 +128,13 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) error {
 	if !ok {
 		return &httpx.StatusError{Status: http.StatusUnauthorized, Message: msgBadLogin}
 	}
-	if s.loginLimiter.RespondOnLimit(w, r, "login:"+email) {
+	// Hatalı denemeler e-posta+IP başına sayılır. Yalnız e-postaya göre
+	// sayılsaydı, adresi bilen herkes 10 yanlış denemeyle sahibini kilitlerdi.
+	// Sınır parola kontrolünden önce uygulanır: dolduğunda doğru parola da
+	// reddedilir, yoksa yanıt farkı parolanın doğru olduğunu ele verirdi.
+	limitKey := "login:" + email + "|" + middleware.GetClientIP(r.Context())
+	if _, rate, err := s.loginLimiter.Status(limitKey); err != nil || rate >= loginFailLimit {
+		tooManyRequests(w, r)
 		return nil
 	}
 
@@ -138,6 +147,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) error {
 		hash = u.PasswordHash
 	}
 	if !auth.CheckPassword(hash, in.Password) {
+		s.loginLimiter.OnLimit(w, r, limitKey) // yalnız hatalı deneme sayılır
 		return &httpx.StatusError{Status: http.StatusUnauthorized, Message: msgBadLogin}
 	}
 
@@ -250,7 +260,8 @@ func (s *Server) googleCallback(w http.ResponseWriter, r *http.Request) error {
 	u, err := s.store.UserByGoogleSub(ctx, gu.Sub)
 	if errors.Is(err, store.ErrNotFound) {
 		// Aynı e-postayla parola hesabı varsa ona bağlanır: Google adresin
-		// sahipliğini doğruladı.
+		// sahipliğini doğruladı. Doğrulanmamış parola ve o parolayla açılmış
+		// oturumlar bağlarken silinir (store.LinkGoogle).
 		u, err = s.store.UserByEmail(ctx, email)
 		switch {
 		case err == nil:

@@ -21,7 +21,12 @@ func Router(s *Server, allowedOrigins []string) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	// İstemci IP'si yalnız X-Real-IP'den alınır: Caddy (CF-Connecting-IP'den)
+	// ve Traefik bu başlığı her istekte üzerine yazar. True-Client-IP ve
+	// X-Forwarded-For istemciden olduğu gibi geçebildiği için okunmaz.
+	// Başlık yoksa (yerel geliştirme) bağlantı adresi kullanılır.
+	r.Use(middleware.ClientIPFromRemoteAddr)
+	r.Use(middleware.ClientIPFromHeader("X-Real-IP"))
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
@@ -38,11 +43,12 @@ func Router(s *Server, allowedOrigins []string) http.Handler {
 			r.Method("POST", "/logout", httpx.Handler(s.logout))
 
 			r.Group(func(r chi.Router) {
-				// IP başına kaba sınır. Asıl parola koruması e-posta başına
-				// sınırda (login içinde): RealIP başlığa güvendiği için IP
-				// tek başına yeterli değil.
+				// IP başına kaba sınır. Parola denemesi ayrıca e-posta+IP
+				// başına sınırlı (login içinde).
 				r.Use(httprate.Limit(30, time.Minute,
-					httprate.WithKeyFuncs(httprate.KeyByRealIP),
+					httprate.WithKeyFuncs(func(r *http.Request) (string, error) {
+						return middleware.GetClientIP(r.Context()), nil
+					}),
 					httprate.WithLimitHandler(tooManyRequests)))
 
 				r.Method("POST", "/signup", httpx.Handler(s.signup))
@@ -56,9 +62,8 @@ func Router(s *Server, allowedOrigins []string) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.sessions.Middleware)
 
-			// Sınır kullanıcı kimliğine göre: IP'ye göre olsaydı X-Forwarded-For
-			// döndürülerek atlatılabilirdi (RealIP başlığa koşulsuz güveniyor).
-			// Kimlik oturumdan geldiği için sahtelenemez.
+			// Sınır kullanıcı kimliğine göre: kimlik oturumdan geldiği için
+			// sahtelenemez ve aynı IP'yi paylaşan kullanıcılar birbirini etkilemez.
 			r.Use(httprate.Limit(
 				240, time.Minute,
 				httprate.WithKeyFuncs(func(r *http.Request) (string, error) {
