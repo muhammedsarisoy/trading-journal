@@ -1,0 +1,29 @@
+# Coolify olmadan tek sunucuda (Lightsail, düz VPS) HTTPS ile yayın.
+# docker-compose.yml'in üstüne eklenir:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
+#
+# Kökteki .env içinde APP_DOMAIN (ör. mentorlio.com) ve APP_URL
+# (https://mentorlio.com) tanımlı olmalı.
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Sertifikalar burada; silinirse Let's Encrypt'ten yeniden alınır.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
