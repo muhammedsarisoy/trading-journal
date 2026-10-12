@@ -5,6 +5,7 @@ import { CandlestickChart } from "lucide-react";
 import { MarketBackdrop } from "@/components/login-art/market-backdrop";
 import { LoginForm } from "@/components/login-form";
 import { Skeleton } from "@/components/ui/skeleton";
+import { safeNext } from "@/lib/safe-next";
 import { getAuthProviders, getSessionUser } from "@/lib/session";
 
 export default async function LoginPage({
@@ -19,7 +20,7 @@ export default async function LoginPage({
     getAuthProviders(),
     searchParams,
   ]);
-  if (user) redirect(next?.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
+  if (user) redirect(safeNext(next));
 
   return (
     <div className="relative isolate flex min-h-svh flex-col items-center justify-center gap-6 overflow-hidden bg-muted p-6 md:p-10">

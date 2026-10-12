@@ -178,6 +178,32 @@ func TestRemoveIsBestEffort(t *testing.T) {
 	}
 }
 
+func TestRemoveOwnedSkipsOthersFiles(t *testing.T) {
+	s := newStore(t)
+	mine, _ := s.Save(Screenshots, "u1/t1", bytes.NewReader(pngHead))
+	theirs, _ := s.Save(Screenshots, "u2/t2", bytes.NewReader(pngHead))
+	// "u1x/..." u1'in klasörü değil; önek eşleşmesi "/" ile sınırlı olmalı.
+	other, _ := s.Save(Screenshots, "u1x/t3", bytes.NewReader(pngHead))
+
+	s.RemoveOwned(Screenshots, "u1", mine, theirs, other)
+	if _, _, err := s.Open(Screenshots, mine); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("kendi dosyası silinmedi: %v", err)
+	}
+	for _, p := range []string{theirs, other} {
+		f, _, err := s.Open(Screenshots, p)
+		if err != nil {
+			t.Fatalf("başkasının dosyası silindi (%s): %v", p, err)
+		}
+		f.Close()
+	}
+	s.RemoveOwned(Screenshots, "", theirs)
+	if f, _, err := s.Open(Screenshots, theirs); err != nil {
+		t.Fatal("kullanıcısız çağrı dosya sildi")
+	} else {
+		f.Close()
+	}
+}
+
 func TestNewIDIsUUIDv4(t *testing.T) {
 	seen := map[string]bool{}
 	for range 100 {

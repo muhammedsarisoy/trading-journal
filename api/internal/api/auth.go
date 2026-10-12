@@ -151,6 +151,15 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) error {
 		return &httpx.StatusError{Status: http.StatusUnauthorized, Message: msgBadLogin}
 	}
 
+	// Supabase'ten taşınan düşük maliyetli hash güncel maliyetle yenilenir.
+	if auth.NeedsRehash(*u.PasswordHash) {
+		if h, err := auth.HashPassword(in.Password); err == nil {
+			if err := s.store.RehashPassword(r.Context(), u.ID, *u.PasswordHash, h); err != nil {
+				slog.Warn("parola hash'i yenilenemedi", "err", err)
+			}
+		}
+	}
+
 	if err := s.startSession(w, r, u.ID); err != nil {
 		return err
 	}
@@ -172,9 +181,21 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) error {
 // ------------------------------------------------------------------ Google
 
 // safeNext, açık yönlendirmeyi engeller: yalnız kendi içimizde bir yol kabul edilir.
+// Tarayıcılar sekme/satır sonunu yok sayar ve ters bölüyü bölü sayar; bu
+// yüzden "/\t/evil.test" ya da "/\\evil.test" de "//evil.test" gibi dışarı gider.
 func safeNext(v string) string {
-	if !strings.HasPrefix(v, "/") || strings.HasPrefix(v, "//") || strings.HasPrefix(v, "/\\") {
-		return "/dashboard"
+	const fallback = "/dashboard"
+	if !strings.HasPrefix(v, "/") || strings.HasPrefix(v, "//") || strings.ContainsRune(v, '\\') {
+		return fallback
+	}
+	for _, c := range v {
+		if c < 0x20 || c == 0x7f {
+			return fallback
+		}
+	}
+	u, err := url.Parse(v)
+	if err != nil || u.Scheme != "" || u.Host != "" || u.Opaque != "" || u.User != nil {
+		return fallback
 	}
 	return v
 }

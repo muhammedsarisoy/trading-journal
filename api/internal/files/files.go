@@ -217,6 +217,24 @@ func (s *Store) Remove(bucket string, paths ...string) {
 	}
 }
 
+// RemoveOwned, yalnız kullanıcının kendi klasöründeki (<user_id>/...)
+// dosyaları siler. Yol veritabanından gelir; Supabase'ten taşınan bir kayıt
+// başka kullanıcının dosyasını gösterse bile o dosya silinmez.
+func (s *Store) RemoveOwned(bucket, userID string, paths ...string) {
+	owned := paths[:0:0]
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		if userID == "" || !strings.HasPrefix(path, userID+"/") {
+			slog.Warn("başka kullanıcıya ait dosya silinmedi", "bucket", bucket, "path", path)
+			continue
+		}
+		owned = append(owned, path)
+	}
+	s.Remove(bucket, owned...)
+}
+
 // newID, rastgele bir UUIDv4 dizesi üretir.
 func newID() string {
 	var b [16]byte

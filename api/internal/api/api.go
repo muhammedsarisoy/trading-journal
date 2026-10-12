@@ -318,7 +318,7 @@ func (s *Server) deleteTrade(w http.ResponseWriter, r *http.Request) error {
 	if err := s.store.DeleteTrade(ctx, userID, id); err != nil {
 		return storeErr(err)
 	}
-	s.files.Remove(files.Screenshots, paths...)
+	s.files.RemoveOwned(files.Screenshots, userID, paths...)
 	httpx.JSON(w, http.StatusOK, map[string]any{"removed_paths": paths})
 	return nil
 }
@@ -374,11 +374,12 @@ func (s *Server) createScreenshot(w http.ResponseWriter, r *http.Request) error 
 }
 
 func (s *Server) deleteScreenshot(w http.ResponseWriter, r *http.Request) error {
-	path, err := s.store.DeleteScreenshot(r.Context(), auth.UserID(r.Context()), chi.URLParam(r, "id"))
+	userID := auth.UserID(r.Context())
+	path, err := s.store.DeleteScreenshot(r.Context(), userID, chi.URLParam(r, "id"))
 	if err != nil {
 		return storeErr(err)
 	}
-	s.files.Remove(files.Screenshots, path)
+	s.files.RemoveOwned(files.Screenshots, userID, path)
 	httpx.JSON(w, http.StatusOK, map[string]string{"removed_path": path})
 	return nil
 }

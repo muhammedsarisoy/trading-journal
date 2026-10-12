@@ -223,8 +223,9 @@ select
     end
   ) as r_multiple
 from public.trades t
-left join public.funds     f on f.id = t.fund_id
-left join public.platforms p on p.id = t.platform_id;
+-- user_id da eşleşmeli: başka kullanıcının hesap/platform adı hiç görünmesin.
+left join public.funds     f on f.id = t.fund_id     and f.user_id = t.user_id
+left join public.platforms p on p.id = t.platform_id and p.user_id = t.user_id;
 
 -- ---------------------------------------------------------------------
 -- 8. Eğitim defteri

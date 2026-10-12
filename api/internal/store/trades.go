@@ -144,8 +144,31 @@ func nonNil(v []string) []string {
 	return v
 }
 
+// ownsTradeRefs, işlemin bağlandığı hesap ve platformun bu kullanıcıya ait
+// olduğunu doğrular. Yoksa başkasının hesap/platform adı işlemde görünürdü.
+func (s *Store) ownsTradeRefs(ctx context.Context, userID string, in model.TradeInput) error {
+	if err := s.ownsFund(ctx, userID, in.FundID); err != nil {
+		return err
+	}
+	if in.PlatformID == nil {
+		return nil
+	}
+	var ok bool
+	if err := s.pool.QueryRow(ctx,
+		"select exists(select 1 from public.platforms where id = $1 and user_id = $2)", *in.PlatformID, userID).Scan(&ok); err != nil {
+		return fmt.Errorf("platform doğrulanamadı: %w", err)
+	}
+	if !ok {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CreateTrade, yeni işlem açar ve zenginleştirilmiş halini döner.
 func (s *Store) CreateTrade(ctx context.Context, userID string, in model.TradeInput) (*model.Trade, error) {
+	if err := s.ownsTradeRefs(ctx, userID, in); err != nil {
+		return nil, err
+	}
 	args := append([]any{userID}, tradeWriteArgs(in)...)
 	placeholders := ""
 	for i := range args {
@@ -167,6 +190,9 @@ func (s *Store) CreateTrade(ctx context.Context, userID string, in model.TradeIn
 
 // UpdateTrade, işlemi bütünüyle günceller (PUT semantiği).
 func (s *Store) UpdateTrade(ctx context.Context, userID, id string, in model.TradeInput) (*model.Trade, error) {
+	if err := s.ownsTradeRefs(ctx, userID, in); err != nil {
+		return nil, err
+	}
 	args := tradeWriteArgs(in)
 	cols := []string{
 		"fund_id", "platform_id", "symbol", "asset_class", "direction", "currency",

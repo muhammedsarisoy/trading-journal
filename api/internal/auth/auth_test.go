@@ -32,6 +32,23 @@ func TestCheckPasswordAcceptsSupabaseHash(t *testing.T) {
 	}
 }
 
+func TestNeedsRehash(t *testing.T) {
+	supabase := "$2a$10$t6gxgGjcIiuno2tcnq/tkeAEQ5LtOA0hUJUwFihQE0bs6GL.bLLMC"
+	if !NeedsRehash(supabase) {
+		t.Fatal("maliyeti 10 olan hash yenilenmeli")
+	}
+	current, err := HashPassword("parola123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if NeedsRehash(current) {
+		t.Fatal("güncel maliyetteki hash yenilenmemeli")
+	}
+	if NeedsRehash("bozuk") {
+		t.Fatal("bcrypt olmayan değer yenilenmemeli")
+	}
+}
+
 func TestCheckPasswordWithoutHash(t *testing.T) {
 	empty := ""
 	for _, h := range []*string{nil, &empty} {

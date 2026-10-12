@@ -110,6 +110,15 @@ func (s *Store) LinkGoogle(ctx context.Context, userID, sub string) error {
 	return tx.Commit(ctx)
 }
 
+// RehashPassword, parola hash'ini yenisiyle değiştirir. Arada parola
+// değiştiyse ya da silindiyse (Google bağlandıysa) dokunmaz.
+func (s *Store) RehashPassword(ctx context.Context, userID, oldHash, newHash string) error {
+	_, err := s.pool.Exec(ctx,
+		"update public.users set password_hash = $3 where id = $1 and password_hash = $2",
+		userID, oldHash, newHash)
+	return err
+}
+
 // TouchLogin, son giriş zamanını günceller.
 func (s *Store) TouchLogin(ctx context.Context, userID string) {
 	_, _ = s.pool.Exec(ctx, "update public.users set last_login_at = now() where id = $1", userID)

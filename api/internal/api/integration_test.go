@@ -361,6 +361,29 @@ func TestAuthLimitIgnoresSpoofableIPHeaders(t *testing.T) {
 	}
 }
 
+func TestLoginRehashesImportedPassword(t *testing.T) {
+	a := newApp(t)
+	_, id := a.signedUp("tasinan@example.com")
+	// Supabase'ten taşınan hesaplar $2a$10$ hash'iyle gelir ("parola123").
+	const imported = "$2a$10$t6gxgGjcIiuno2tcnq/tkeAEQ5LtOA0hUJUwFihQE0bs6GL.bLLMC"
+	if _, err := a.pool.Exec(context.Background(),
+		"update public.users set password_hash = $2 where id = $1", id, imported); err != nil {
+		t.Fatal(err)
+	}
+
+	c := a.client()
+	if r := c.do("POST", "/api/v1/auth/login", map[string]string{"email": "tasinan@example.com", "password": "parola123"}); r.status != 200 {
+		t.Fatalf("taşınan parolayla giriş %d: %s", r.status, r.body)
+	}
+	hash := a.scalar("select password_hash from public.users where id = $1", id)
+	if hash == imported || auth.NeedsRehash(hash) {
+		t.Fatalf("hash güncel maliyetle yenilenmedi: %s", hash[:7])
+	}
+	if r := a.client().do("POST", "/api/v1/auth/login", map[string]string{"email": "tasinan@example.com", "password": "parola123"}); r.status != 200 {
+		t.Fatalf("yenilenen hash'le giriş %d", r.status)
+	}
+}
+
 func TestSignupDisabled(t *testing.T) {
 	b := newApp(t, func(o *api.Options) { o.AllowSignup = false })
 	c := b.client()
@@ -586,6 +609,49 @@ func TestUsersCannotReachEachOthersData(t *testing.T) {
 	}
 	if r := alice.do("GET", "/api/v1/trades/"+tid, nil); r.status != 200 || !a.exists(files.Screenshots, path) {
 		t.Fatal("Alice'in verisi bozuldu")
+	}
+}
+
+func TestTradesCannotUseOthersFundOrPlatform(t *testing.T) {
+	a := newApp(t)
+	alice, _ := a.signedUp("alice@example.com")
+	bob, _ := a.signedUp("bob@example.com")
+
+	r := alice.do("POST", "/api/v1/funds", map[string]any{"name": "ALICE-FUND", "currency": "EUR", "starting_balance": 1000})
+	if r.status != http.StatusCreated {
+		t.Fatalf("hesap %d: %s", r.status, r.body)
+	}
+	fundID := r.json(t)["id"].(string)
+	r = alice.do("POST", "/api/v1/platforms", map[string]any{"name": "ALICE-PLATFORM"})
+	if r.status != http.StatusCreated {
+		t.Fatalf("platform %d: %s", r.status, r.body)
+	}
+	platformID := r.json(t)["id"].(string)
+
+	tid := bob.createTrade()
+	base := map[string]any{"symbol": "EURUSD", "opened_at": "2026-10-09T10:00:00Z"}
+	with := func(k, v string) map[string]any {
+		m := map[string]any{k: v}
+		for bk, bv := range base {
+			m[bk] = bv
+		}
+		return m
+	}
+	for name, r := range map[string]resp{
+		"hesapla açma":       bob.do("POST", "/api/v1/trades", with("fund_id", fundID)),
+		"platformla açma":    bob.do("POST", "/api/v1/trades", with("platform_id", platformID)),
+		"hesapla güncelleme": bob.do("PUT", "/api/v1/trades/"+tid, with("fund_id", fundID)),
+		"platformla günc.":   bob.do("PUT", "/api/v1/trades/"+tid, with("platform_id", platformID)),
+	} {
+		if r.status != http.StatusNotFound {
+			t.Errorf("%s: 404 beklenirdi, %d: %s", name, r.status, r.body)
+		}
+		if strings.Contains(string(r.body), "ALICE-") {
+			t.Errorf("%s: Alice'in adı sızdı", name)
+		}
+	}
+	if n := a.scalar("select count(*)::text from public.trades where fund_id = $1 or platform_id = $2", fundID, platformID); n != "0" {
+		t.Fatalf("Bob'un işlemi Alice'in hesabına bağlandı (%s)", n)
 	}
 }
 
