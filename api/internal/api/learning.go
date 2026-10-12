@@ -76,7 +76,7 @@ func (s *Server) deleteCourse(w http.ResponseWriter, r *http.Request) error {
 	if err := s.store.DeleteCourse(ctx, userID, id); err != nil {
 		return storeErr(err)
 	}
-	s.files.Remove(files.LessonImages, paths...)
+	s.files.RemoveOwned(files.LessonImages, userID, paths...)
 	httpx.JSON(w, http.StatusOK, map[string]any{"removed_paths": paths})
 	return nil
 }
@@ -145,7 +145,7 @@ func (s *Server) deleteLesson(w http.ResponseWriter, r *http.Request) error {
 	if err := s.store.DeleteLesson(ctx, userID, id); err != nil {
 		return storeErr(err)
 	}
-	s.files.Remove(files.LessonImages, paths...)
+	s.files.RemoveOwned(files.LessonImages, userID, paths...)
 	httpx.JSON(w, http.StatusOK, map[string]any{"removed_paths": paths})
 	return nil
 }
@@ -200,7 +200,7 @@ func (s *Server) updateNote(w http.ResponseWriter, r *http.Request) error {
 		return storeErr(err)
 	}
 	if previous != "" && (in.ImagePath == nil || *in.ImagePath != previous) {
-		s.files.Remove(files.LessonImages, previous)
+		s.files.RemoveOwned(files.LessonImages, userID, previous)
 	}
 	httpx.JSON(w, http.StatusOK, n)
 	return nil
@@ -225,11 +225,12 @@ func (s *Server) uploadLessonImage(w http.ResponseWriter, r *http.Request) error
 }
 
 func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request) error {
-	path, err := s.store.DeleteNote(r.Context(), auth.UserID(r.Context()), chi.URLParam(r, "id"))
+	userID := auth.UserID(r.Context())
+	path, err := s.store.DeleteNote(r.Context(), userID, chi.URLParam(r, "id"))
 	if err != nil {
 		return storeErr(err)
 	}
-	s.files.Remove(files.LessonImages, path)
+	s.files.RemoveOwned(files.LessonImages, userID, path)
 	httpx.JSON(w, http.StatusOK, map[string]string{"removed_path": path})
 	return nil
 }

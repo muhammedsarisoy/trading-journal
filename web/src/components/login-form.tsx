@@ -23,14 +23,9 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { authApi } from "@/lib/api";
+import { safeNext } from "@/lib/safe-next";
 
 type Mode = "signin" | "signup";
-
-/** Açık yönlendirmeyi engeller: yalnız kendi içimizde bir yol kabul edilir. */
-function safeNext(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/dashboard";
-  return value;
-}
 
 export function LoginForm({
   className,
